@@ -163,13 +163,13 @@ fun SeeruMainContent(
     val isSpeaking by speechManager.isSpeaking.collectAsState()
     val audioRms by speechManager.audioRms.collectAsState()
 
-    var statusMessage by remember { mutableStateOf("Say \"Hey Seeru\" or tap the orb") }
+    var statusMessage by remember { mutableStateOf("Say \"Hey\" or tap the orb") }
     var lastUserTranscript by remember { mutableStateOf("") }
     var lastSeeruResponse by remember { mutableStateOf("") }
 
-    // Hands-free & Service settings
+    // Hands-free & Service settings (Default active 24/7 with 'Hey' wake word)
     var isHandsFreeActive by remember {
-        mutableStateOf(prefs.getBoolean("pref_hands_free_active", false))
+        mutableStateOf(prefs.getBoolean("pref_hands_free_active", true))
     }
     var wakeSensitivity by remember {
         mutableFloatStateOf(prefs.getFloat("pref_wake_sensitivity", 0.7f))
@@ -188,6 +188,34 @@ fun SeeruMainContent(
     ) { perms ->
         val recordAudioGranted = perms[Manifest.permission.RECORD_AUDIO] == true
         if (recordAudioGranted && isHandsFreeActive) {
+            SeeruForegroundService.startService(context)
+        }
+    }
+
+    // Auto-request permissions and start background wake-word listening
+    LaunchedEffect(Unit) {
+        val hasRecordPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        val neededPerms = mutableListOf<String>()
+        if (!hasRecordPerm) {
+            neededPerms.add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasNotifPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!hasNotifPerm) {
+                neededPerms.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
+        if (neededPerms.isNotEmpty()) {
+            permissionsLauncher.launch(neededPerms.toTypedArray())
+        } else if (isHandsFreeActive) {
             SeeruForegroundService.startService(context)
         }
     }
@@ -415,9 +443,9 @@ fun SeeruMainContent(
                         )
                     )
 
-                    val opened = phoneActionHandler.composeSms(phoneNum, outcome.messageBody)
+                    val opened = phoneActionHandler.sendDirectSms(phoneNum, outcome.messageBody)
                     if (!opened) {
-                        Toast.makeText(context, "Koi SMS app nahi mili", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Koi SMS app ya SIM network nahi mila", Toast.LENGTH_SHORT).show()
                     }
                     orbState = OrbState.IDLE
                 }
@@ -578,6 +606,30 @@ fun SeeruMainContent(
                     speechManager.speak(reply)
                     lastSeeruResponse = reply
                     orbState = OrbState.IDLE
+                }
+
+                is AssistantOutcome.ContactUpdateAction -> {
+                    val aliasClean = outcome.alias.lowercase().trim()
+                    val existing = dao.findContactByAlias(aliasClean)
+                    val newEntity = com.example.data.local.ContactAliasEntity(
+                        alias = aliasClean,
+                        actualName = existing?.actualName ?: aliasClean.replaceFirstChar { it.uppercase() },
+                        phoneNumber = outcome.newNumber
+                    )
+                    dao.deleteContactByAliasName(aliasClean)
+                    dao.insertContactAlias(newEntity)
+                    val reply = "${newEntity.actualName} ka number update kar diya gaya hai: ${outcome.newNumber}"
+                    speechManager.speak(reply)
+                    lastSeeruResponse = reply
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = reply,
+                            actionType = "Contact: $aliasClean"
+                        )
+                    )
+                    Toast.makeText(context, reply, Toast.LENGTH_LONG).show()
+                    orbState = OrbState.SPEAKING
                 }
 
                 is AssistantOutcome.RoutineAction -> {
@@ -897,14 +949,14 @@ fun SeeruMainContent(
                     },
                     onUpdateContactAlias = { oldAlias, newAlias ->
                         coroutineScope.launch {
-                            dao.deleteContactAlias(oldAlias)
+                            dao.deleteContactByAliasName(oldAlias.alias)
                             dao.insertContactAlias(newAlias)
-                            Toast.makeText(context, "Contact updated: ${newAlias.actualName} (${newAlias.phoneNumber})", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Number updated: ${newAlias.actualName} (${newAlias.phoneNumber})", Toast.LENGTH_SHORT).show()
                         }
                     },
                     onDeleteContactAlias = { alias ->
                         coroutineScope.launch {
-                            dao.deleteContactAlias(alias)
+                            dao.deleteContactByAliasName(alias.alias)
                             Toast.makeText(context, "Alias '${alias.alias}' deleted", Toast.LENGTH_SHORT).show()
                         }
                     }

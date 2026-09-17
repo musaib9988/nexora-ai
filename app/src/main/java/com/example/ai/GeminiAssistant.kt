@@ -27,6 +27,7 @@ sealed class AssistantOutcome {
     data class WeatherAction(val city: String = "") : AssistantOutcome()
     data class YouTubeAction(val query: String = "") : AssistantOutcome()
     data class AppAction(val appName: String) : AssistantOutcome()
+    data class ContactUpdateAction(val alias: String, val newNumber: String) : AssistantOutcome()
     data class RoutineAction(val routineName: String) : AssistantOutcome()
     data class TimeDateAction(val format: String = "NOW") : AssistantOutcome()
     data class Error(val message: String) : AssistantOutcome()
@@ -395,13 +396,33 @@ class GeminiAssistant {
     fun parseOfflineCommand(prompt: String, isIotModeEnabled: Boolean = false): AssistantOutcome {
         val lower = prompt.lowercase().trim()
 
+        // 1. Check for stand-alone wake word (Immediate Siri-style greeting)
+        if (lower == "hey" || lower == "hey nexora" || lower == "hey seeru" || lower == "hey nexora ai" || lower == "nexora" || lower == "seeru") {
+            return AssistantOutcome.SpokenResponse("Ji! Mai sun rahi hu, bataiye kya madad karu?")
+        }
+
+        // 2. Strip leading wake-words so following commands execute seamlessly
+        val cleanCmd = lower
+            .replace(Regex("""^(?:hey\s+(?:nexora|seeru)?|nexora|seeru)\s*"""), "")
+            .trim()
+        val cmd = if (cleanCmd.isNotBlank()) cleanCmd else lower
+
+        // 3. Contact Number Update via Voice (e.g. "Ammi ka number 9876543210 karo")
+        val updatePattern = Regex("""([a-zA-Z0-9_\u0600-\u06FF\u0900-\u097F]+)\s+ka\s+number\s+([0-9+]{7,15})""", RegexOption.IGNORE_CASE)
+        val updateMatch = updatePattern.find(cmd)
+        if (updateMatch != null) {
+            val alias = updateMatch.groupValues[1].trim()
+            val num = updateMatch.groupValues[2].trim()
+            return AssistantOutcome.ContactUpdateAction(alias = alias, newNumber = num)
+        }
+
         // If IoT mode is OFF, check for IoT commands and reject them politely
-        val isIotCommand = lower.contains("light") || lower.contains("batti") ||
-                lower.contains("pankha") || lower.contains("fan") ||
-                lower.contains("temperature") || lower.contains("temp") ||
-                lower.contains("humidity") || lower.contains("sensor") ||
-                lower.contains("saari lights") || lower.contains("all off") ||
-                lower.contains("study mode") || lower.contains("esp32")
+        val isIotCommand = cmd.contains("light") || cmd.contains("batti") ||
+                cmd.contains("pankha") || cmd.contains("fan") ||
+                cmd.contains("temperature") || cmd.contains("temp") ||
+                cmd.contains("humidity") || cmd.contains("sensor") ||
+                cmd.contains("saari lights") || cmd.contains("all off") ||
+                cmd.contains("study mode") || cmd.contains("esp32")
 
         if (!isIotModeEnabled && isIotCommand) {
             return AssistantOutcome.SpokenResponse(
@@ -410,70 +431,34 @@ class GeminiAssistant {
         }
 
         return when {
-            // Wake word interactive greeting (Siri style immediate response)
-            lower == "hey" || lower == "hey nexora" || lower == "hey seeru" || lower == "hey nexora ai" ->
-                AssistantOutcome.SpokenResponse("Ji! Mai sun rahi hu, bataiye kya madad karu?")
-
             // YouTube (Voice trigger: "open youtube", "youtube chalao", "search X on youtube")
-            lower.contains("youtube") -> {
-                val query = extractYouTubeQuery(lower)
+            cmd.contains("youtube") -> {
+                val query = extractYouTubeQuery(cmd)
                 AssistantOutcome.YouTubeAction(query = query)
             }
 
             // WhatsApp (Voice trigger: "send whatsapp message", "whatsapp karo", "whatsapp pe message bhejo")
-            lower.contains("whatsapp") -> {
-                val (rec, body) = extractWhatsAppDetails(lower)
+            cmd.contains("whatsapp") -> {
+                val (rec, body) = extractWhatsAppDetails(cmd)
                 AssistantOutcome.WhatsAppAction(contactOrPhone = rec, messageBody = body)
             }
 
             // Alarms (Voice trigger: "set alarm", "alarm lagao", "7 baje ka alarm lagao", "alarms dikhao")
-            lower.contains("alarm") || lower.contains("alarms") -> {
-                val (h, m) = extractAlarmTime(lower)
+            cmd.contains("alarm") || cmd.contains("alarms") || cmd.contains("baje utha dena") || cmd.contains("baje jaga dena") -> {
+                val (h, m) = extractAlarmTime(cmd)
                 AssistantOutcome.AlarmAction(command = "SET", hour = h, minute = m)
             }
 
             // Weather (Voice trigger: "show weather", "mausam kaisa hai", "weather kya hai", "aaj ka mausam")
-            lower.contains("weather") || lower.contains("mausam") || lower.contains("tapman") -> {
-                val city = extractWeatherCity(lower)
+            cmd.contains("weather") || cmd.contains("mausam") || cmd.contains("tapman") || cmd.contains("hawa") -> {
+                val city = extractWeatherCity(cmd)
                 AssistantOutcome.WeatherAction(city = city)
             }
 
-            // Routines (only when IoT is enabled)
-            isIotModeEnabled && (lower.contains("good morning") || lower.contains("subah bakhair") || lower.contains("suprabhat")) ->
-                AssistantOutcome.RoutineAction("Good Morning")
-
-            isIotModeEnabled && (lower.contains("all off") || lower.contains("saari light") || lower.contains("sab band") || lower.contains("all devices off")) ->
-                AssistantOutcome.RoutineAction("All Off")
-
-            isIotModeEnabled && (lower.contains("study mode") || lower.contains("padhai mode")) ->
-                AssistantOutcome.RoutineAction("Study Mode")
-
-            // IoT Light (only when IoT is enabled)
-            isIotModeEnabled && (lower.contains("light on") || lower.contains("light chalao") || lower.contains("light jalao") || lower.contains("batti on") || lower.contains("turn on the light")) ->
-                AssistantOutcome.DeviceAction(deviceName = extractDeviceName(lower, "light"), action = "ON")
-
-            isIotModeEnabled && (lower.contains("light off") || lower.contains("light band") || lower.contains("light bujhao") || lower.contains("batti band") || lower.contains("turn off the light")) ->
-                AssistantOutcome.DeviceAction(deviceName = extractDeviceName(lower, "light"), action = "OFF")
-
-            // IoT Fan (only when IoT is enabled)
-            isIotModeEnabled && (lower.contains("fan on") || lower.contains("pankha on") || lower.contains("pankha chalao") || lower.contains("turn on the fan")) ->
-                AssistantOutcome.DeviceAction(deviceName = "fan", action = "ON")
-
-            isIotModeEnabled && (lower.contains("fan off") || lower.contains("pankha off") || lower.contains("pankha band") || lower.contains("turn off the fan")) ->
-                AssistantOutcome.DeviceAction(deviceName = "fan", action = "OFF")
-
-            // Sensor Readings (only when IoT is enabled)
-            isIotModeEnabled && (lower.contains("temperature") || lower.contains("temp") || lower.contains("humidity") || lower.contains("sensor status")) ->
-                AssistantOutcome.SensorQuery(room = if (lower.contains("kitchen")) "kitchen" else "bedroom")
-
             // Phone Calls
-            lower.startsWith("call ") || lower.contains("ko phone") || lower.contains("ko call") -> {
-                val target = lower
-                    .replace("hey seeru", "")
-                    .replace("hey nexora", "")
-                    .replace("nexora", "")
-                    .replace("seeru", "")
-                    .replace("hey", "")
+            cmd.startsWith("call ") || cmd.contains("ko phone") || cmd.contains("ko call") ||
+                    cmd.contains("call lagao") || cmd.contains("call karo") || cmd.contains("phone lagao") -> {
+                val target = cmd
                     .replace("ko phone lagao", "")
                     .replace("ko call lagao", "")
                     .replace("ko call karo", "")
@@ -482,56 +467,93 @@ class GeminiAssistant {
                     .replace("ko phone", "")
                     .replace("call lagao", "")
                     .replace("call karo", "")
+                    .replace("phone lagao", "")
                     .replace("call ", "")
                     .trim()
                 AssistantOutcome.CallAction(contactName = target.ifEmpty { "Ammi" })
             }
 
             // Messages / SMS
-            lower.contains("message") || lower.contains("msg") || lower.contains("sms") || lower.contains("text karo") || lower.startsWith("send message") -> {
-                val (recipient, body) = extractMessageDetails(lower)
+            cmd.contains("message") || cmd.contains("msg") || cmd.contains("sms") || cmd.contains("text karo") || cmd.startsWith("send message") -> {
+                val (recipient, body) = extractMessageDetails(cmd)
                 AssistantOutcome.MessageAction(recipient = recipient, messageBody = body)
             }
 
             // Camera
-            lower.contains("camera") || lower.contains("photo khicho") || lower.contains("tasveer") ||
-                    lower.contains("photo lo") || lower.contains("selfie") || lower.contains("picture") ->
+            cmd.contains("camera") || cmd.contains("photo khicho") || cmd.contains("tasveer") ||
+                    cmd.contains("photo lo") || cmd.contains("selfie") || cmd.contains("picture") ->
                 AssistantOutcome.CameraAction()
 
             // Music / Songs
-            lower.contains("music") || lower.contains("gaana") || lower.contains("gana") || lower.contains("song") || lower.contains("geet") -> {
-                val isPause = lower.contains("pause") || lower.contains("band") || lower.contains("stop") || lower.contains("roko")
-                val cmd = if (isPause) "PAUSE" else "PLAY"
-                val songQuery = if (isPause) "" else extractSongQuery(lower)
-                AssistantOutcome.MusicAction(command = cmd, songQuery = songQuery)
+            cmd.contains("music") || cmd.contains("gaana") || cmd.contains("gana") || cmd.contains("song") || cmd.contains("geet") -> {
+                val isPause = cmd.contains("pause") || cmd.contains("band") || cmd.contains("stop") || cmd.contains("roko")
+                val command = if (isPause) "PAUSE" else "PLAY"
+                val songQuery = if (isPause) "" else extractSongQuery(cmd)
+                AssistantOutcome.MusicAction(command = command, songQuery = songQuery)
             }
 
-            // Open Apps
-            lower.startsWith("open ") || lower.contains("kholo") -> {
-                val app = lower
-                    .replace("hey seeru", "")
-                    .replace("hey nexora", "")
-                    .replace("nexora", "")
-                    .replace("seeru", "")
-                    .replace("hey", "")
-                    .replace("open ", "")
+            // Open Apps (e.g. "open calculator", "calculator open karo", "instagram kholo", "settings kholo")
+            cmd.startsWith("open ") || cmd.contains("kholo") || cmd.contains("chalao") ||
+                    cmd.contains("launch ") || cmd.contains("start ") || cmd.contains("open karo") ||
+                    cmd.contains("calculator") || cmd.contains("settings") || cmd.contains("clock") ||
+                    cmd.contains("chrome") || cmd.contains("gallery") || cmd.contains("photos") ||
+                    cmd.contains("files") || cmd.contains("instagram") || cmd.contains("spotify") ||
+                    cmd.contains("facebook") || cmd.contains("snapchat") || cmd.contains("telegram") ||
+                    cmd.contains("map") || cmd.contains("dialer") -> {
+                val app = cmd
+                    .replace("open karo", "")
                     .replace("kholo", "")
+                    .replace("chalao", "")
+                    .replace("start karo", "")
+                    .replace("launch", "")
+                    .replace("start", "")
+                    .replace("open", "")
+                    .replace("app", "")
+                    .replace("dikhao", "")
                     .trim()
-                AssistantOutcome.AppAction(appName = app.ifEmpty { "YouTube" })
+                AssistantOutcome.AppAction(appName = app.ifEmpty { cmd })
             }
+
+            // Routines (only when IoT is enabled)
+            isIotModeEnabled && (cmd.contains("good morning") || cmd.contains("subah bakhair") || cmd.contains("suprabhat")) ->
+                AssistantOutcome.RoutineAction("Good Morning")
+
+            isIotModeEnabled && (cmd.contains("all off") || cmd.contains("saari light") || cmd.contains("sab band") || cmd.contains("all devices off")) ->
+                AssistantOutcome.RoutineAction("All Off")
+
+            isIotModeEnabled && (cmd.contains("study mode") || cmd.contains("padhai mode")) ->
+                AssistantOutcome.RoutineAction("Study Mode")
+
+            // IoT Light (only when IoT is enabled)
+            isIotModeEnabled && (cmd.contains("light on") || cmd.contains("light chalao") || cmd.contains("light jalao") || cmd.contains("batti on") || cmd.contains("turn on the light")) ->
+                AssistantOutcome.DeviceAction(deviceName = extractDeviceName(cmd, "light"), action = "ON")
+
+            isIotModeEnabled && (cmd.contains("light off") || cmd.contains("light band") || cmd.contains("light bujhao") || cmd.contains("batti band") || cmd.contains("turn off the light")) ->
+                AssistantOutcome.DeviceAction(deviceName = extractDeviceName(cmd, "light"), action = "OFF")
+
+            // IoT Fan (only when IoT is enabled)
+            isIotModeEnabled && (cmd.contains("fan on") || cmd.contains("pankha on") || cmd.contains("pankha chalao") || cmd.contains("turn on the fan")) ->
+                AssistantOutcome.DeviceAction(deviceName = "fan", action = "ON")
+
+            isIotModeEnabled && (cmd.contains("fan off") || cmd.contains("pankha off") || cmd.contains("pankha band") || cmd.contains("turn off the fan")) ->
+                AssistantOutcome.DeviceAction(deviceName = "fan", action = "OFF")
+
+            // Sensor Readings (only when IoT is enabled)
+            isIotModeEnabled && (cmd.contains("temperature") || cmd.contains("temp") || cmd.contains("humidity") || cmd.contains("sensor status")) ->
+                AssistantOutcome.SensorQuery(room = if (cmd.contains("kitchen")) "kitchen" else "bedroom")
 
             // Time & Date
-            lower.contains("time") || lower.contains("samay") || lower.contains("waqt") || lower.contains("date") ->
+            cmd.contains("time") || cmd.contains("samay") || cmd.contains("waqt") || cmd.contains("date") ->
                 AssistantOutcome.TimeDateAction()
 
             // Identity & Greetings
-            lower.contains("kaun ho") || lower.contains("who are you") || lower.contains("naam kya") ->
+            cmd.contains("kaun ho") || cmd.contains("who are you") || cmd.contains("naam kya") ->
                 AssistantOutcome.SpokenResponse("Mai Nexora hu, aapka smart personal voice assistant. Mai YouTube open kar sakti hu, WhatsApp message bhej sakti hu, alarms set kar sakti hu, weather bata sakti hu aur calls mila sakti hu.")
 
-            lower.contains("hello") || lower.contains("hi") || lower.contains("namaste") || lower.contains("salam") ->
+            cmd.contains("hello") || cmd.contains("hi") || cmd.contains("namaste") || cmd.contains("salam") ->
                 AssistantOutcome.SpokenResponse("Namaste! Mai Nexora hu. Mai aapki kya madad kar sakti hu?")
 
-            lower.contains("kaise ho") || lower.contains("how are you") ->
+            cmd.contains("kaise ho") || cmd.contains("how are you") ->
                 AssistantOutcome.SpokenResponse("Mai bilkul theek hu! Aap batayein, mai aapki kya madad karu?")
 
             else ->
@@ -539,7 +561,7 @@ class GeminiAssistant {
                     if (isIotModeEnabled) {
                         "Aap mujhe phone call, WhatsApp, YouTube, alarm, weather ya light on/off ke commands de sakte hain."
                     } else {
-                        "Mai aapka voice assistant hu. Aap mujhe 'Open YouTube', 'Send WhatsApp message', 'Set alarm', 'Show weather' ya call lagane ke commands de sakte hain."
+                        "Mai aapka voice assistant hu. Aap mujhe 'Open YouTube', 'Send WhatsApp message', 'Set alarm', 'Show weather', 'Open Calculator' ya call lagane ke commands de sakte hain."
                     }
                 )
         }
@@ -581,6 +603,14 @@ class GeminiAssistant {
         if (koMatch != null) {
             val rec = koMatch.groupValues[1].trim()
             val body = koMatch.groupValues[2].trim()
+            return Pair(rec, body.ifEmpty { "Hello!" })
+        }
+
+        val revKoWaPattern = Regex("""^(?:whatsapp|send\s+whatsapp)\s+(?:message\s+)?(?:bhejo\s+)?([a-zA-Z0-9_\u0600-\u06FF\u0900-\u097F]+)\s+ko\s*(.*)$""", RegexOption.IGNORE_CASE)
+        val revKoWaMatch = revKoWaPattern.find(clean)
+        if (revKoWaMatch != null) {
+            val rec = revKoWaMatch.groupValues[1].trim()
+            val body = revKoWaMatch.groupValues[2].trim()
             return Pair(rec, body.ifEmpty { "Hello!" })
         }
 
@@ -664,6 +694,14 @@ class GeminiAssistant {
         if (koMatch != null) {
             val rec = koMatch.groupValues[1].trim()
             val body = koMatch.groupValues[2].trim()
+            return Pair(rec, if (body.isNotBlank()) body else "Hello!")
+        }
+
+        val revKoPattern = Regex("""^(?:message|msg|sms|send\s+message)\s+(?:bhejo\s+)?([a-zA-Z0-9_\u0600-\u06FF\u0900-\u097F]+)\s+ko\s*(.*)$""")
+        val revKoMatch = revKoPattern.find(clean)
+        if (revKoMatch != null) {
+            val rec = revKoMatch.groupValues[1].trim()
+            val body = revKoMatch.groupValues[2].trim()
             return Pair(rec, if (body.isNotBlank()) body else "Hello!")
         }
 

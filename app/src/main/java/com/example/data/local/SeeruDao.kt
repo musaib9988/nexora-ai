@@ -69,7 +69,7 @@ interface SeeruDao {
     suspend fun deleteRoutine(routine: RoutineEntity)
 
     // --- Contact Aliases ---
-    @Query("SELECT * FROM contact_aliases")
+    @Query("SELECT * FROM contact_aliases ORDER BY alias ASC")
     fun getAllContactAliases(): Flow<List<ContactAliasEntity>>
 
     @Query("SELECT * FROM contact_aliases WHERE LOWER(alias) = LOWER(:alias) LIMIT 1")
@@ -81,6 +81,15 @@ interface SeeruDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertContactAliases(aliases: List<ContactAliasEntity>)
 
+    @Update
+    suspend fun updateContactAlias(alias: ContactAliasEntity)
+
+    @Query("UPDATE contact_aliases SET alias = LOWER(:newAlias), actualName = :newName, phoneNumber = :newPhone WHERE LOWER(alias) = LOWER(:oldAlias)")
+    suspend fun updateContactByAlias(oldAlias: String, newAlias: String, newName: String, newPhone: String)
+
     @Delete
     suspend fun deleteContactAlias(alias: ContactAliasEntity)
+
+    @Query("DELETE FROM contact_aliases WHERE LOWER(alias) = LOWER(:alias)")
+    suspend fun deleteContactByAliasName(alias: String)
 }

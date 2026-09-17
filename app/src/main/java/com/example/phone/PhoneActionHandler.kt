@@ -2,11 +2,15 @@ package com.example.phone
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.provider.AlarmClock
 import android.provider.MediaStore
 import android.provider.Settings
+import android.telephony.SmsManager
+import android.util.Log
 import android.view.KeyEvent
 
 class PhoneActionHandler(private val context: Context) {
@@ -22,7 +26,38 @@ class PhoneActionHandler(private val context: Context) {
         val intent = Intent(Intent.ACTION_DIAL, uri).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        context.startActivity(intent)
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("PhoneActionHandler", "Dial failed: ${e.message}")
+        }
+    }
+
+    fun sendDirectSms(recipientPhoneOrName: String, body: String): Boolean {
+        val digits = recipientPhoneOrName.filter { it.isDigit() || it == '+' }
+        if (digits.isBlank() || body.isBlank()) {
+            return composeSms(recipientPhoneOrName, body)
+        }
+
+        // Try direct SmsManager if SEND_SMS permission is granted
+        return try {
+            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                context.getSystemService(SmsManager::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                SmsManager.getDefault()
+            }
+            val parts = smsManager.divideMessage(body)
+            if (parts.size > 1) {
+                smsManager.sendMultipartTextMessage(digits, null, parts, null, null)
+            } else {
+                smsManager.sendTextMessage(digits, null, body, null, null)
+            }
+            true
+        } catch (e: Exception) {
+            Log.w("PhoneActionHandler", "Direct SMS failed (${e.message}), falling back to SMS app")
+            composeSms(digits, body)
+        }
     }
 
     fun composeSms(recipientPhoneOrName: String, body: String): Boolean {
@@ -329,53 +364,177 @@ class PhoneActionHandler(private val context: Context) {
 
     fun openApp(appName: String): Boolean {
         val pm = context.packageManager
-        val lower = appName.lowercase().trim()
+        val raw = appName.lowercase().trim()
 
-        if (lower.contains("youtube")) {
-            return openYouTube()
-        }
-        if (lower.contains("whatsapp")) {
-            return sendWhatsAppMessage()
-        }
-        if (lower.contains("setting") || lower.contains("settings")) {
-            openSettings()
-            return true
-        }
-        if (lower.contains("clock") || lower.contains("alarm")) {
-            openAlarms()
-            return true
-        }
-        if (lower.contains("camera")) {
-            openCamera()
-            return true
-        }
+        // Strip conversational fillers
+        val clean = raw
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .replace("open ", "")
+            .replace("kholo", "")
+            .replace("chalao", "")
+            .replace("launch ", "")
+            .replace("start ", "")
+            .replace("dikhao", "")
+            .replace("app", "")
+            .replace("application", "")
+            .replace("please", "")
+            .trim()
 
-        // Common known package aliases
-        val targetPackage = when {
-            lower.contains("youtube") -> "com.google.android.youtube"
-            lower.contains("chrome") || lower.contains("browser") -> "com.android.chrome"
-            lower.contains("map") -> "com.google.android.apps.maps"
-            lower.contains("whatsapp") -> "com.whatsapp"
-            lower.contains("gmail") || lower.contains("mail") -> "com.google.android.gm"
-            lower.contains("spotify") -> "com.spotify.music"
-            else -> null
-        }
+        val query = if (clean.isNotBlank()) clean else raw
 
-        if (targetPackage != null) {
-            val launchIntent = pm.getLaunchIntentForPackage(targetPackage)
-            if (launchIntent != null) {
-                launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                context.startActivity(launchIntent)
+        // 1. Dedicated Hardware & Core Android Categories
+        when {
+            query.contains("youtube") -> return openYouTube()
+            query.contains("whatsapp") -> return sendWhatsAppMessage()
+            query.contains("camera") || query.contains("photo") -> return openCamera()
+            query.contains("setting") -> {
+                openSettings()
                 return true
+            }
+            query.contains("clock") || query.contains("alarm") -> {
+                openAlarms()
+                return true
+            }
+            query.contains("calculator") || query.contains("calci") || query.contains("hisab") -> {
+                val calcPackages = listOf(
+                    "com.google.android.calculator",
+                    "com.android.calculator2",
+                    "com.sec.android.app.popupcalculator",
+                    "com.miui.calculator",
+                    "com.oneplus.calculator",
+                    "com.coloros.calculator"
+                )
+                for (pkg in calcPackages) {
+                    val launch = pm.getLaunchIntentForPackage(pkg)
+                    if (launch != null) {
+                        launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(launch)
+                        return true
+                    }
+                }
+                // Try Category Intent
+                try {
+                    val calcIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_APP_CALCULATOR)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(calcIntent)
+                    return true
+                } catch (e: Exception) {
+                    // Fallthrough
+                }
+            }
+            query.contains("gallery") || query.contains("photos") -> {
+                try {
+                    val galleryIntent = Intent(Intent.ACTION_VIEW).apply {
+                        type = "image/*"
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(galleryIntent)
+                    return true
+                } catch (e: Exception) {
+                    // Fallthrough
+                }
+            }
+            query.contains("chrome") || query.contains("browser") || query.contains("internet") -> {
+                try {
+                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(browserIntent)
+                    return true
+                } catch (e: Exception) {
+                    // Fallthrough
+                }
+            }
+            query.contains("map") || query.contains("navigation") || query.contains("rasta") -> {
+                try {
+                    val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=")).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(mapIntent)
+                    return true
+                } catch (e: Exception) {
+                    // Fallthrough
+                }
+            }
+            query.contains("dialer") || query.contains("phone") || query.contains("call") -> {
+                dialContact("")
+                return true
+            }
+            query.contains("file") || query.contains("document") -> {
+                try {
+                    val fileIntent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(Uri.parse("content://media/external/file"), "*/*")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(fileIntent)
+                    return true
+                } catch (e: Exception) {
+                    // Fallthrough
+                }
             }
         }
 
-        // Search installed applications by display label
+        // 2. Comprehensive Launcher Activity Search across ALL installed apps
+        try {
+            val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+
+            // Pass A: Exact case-insensitive label match
+            for (info in resolveInfos) {
+                val label = info.loadLabel(pm).toString().lowercase().trim()
+                if (label == query || label == raw) {
+                    val launch = pm.getLaunchIntentForPackage(info.activityInfo.packageName)
+                    if (launch != null) {
+                        launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(launch)
+                        return true
+                    }
+                }
+            }
+
+            // Pass B: Starts with or contains label match
+            for (info in resolveInfos) {
+                val label = info.loadLabel(pm).toString().lowercase().trim()
+                if (label.contains(query) || query.contains(label)) {
+                    val launch = pm.getLaunchIntentForPackage(info.activityInfo.packageName)
+                    if (launch != null) {
+                        launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(launch)
+                        return true
+                    }
+                }
+            }
+
+            // Pass C: Package name substring match
+            for (info in resolveInfos) {
+                val pkg = info.activityInfo.packageName.lowercase()
+                if (pkg.contains(query)) {
+                    val launch = pm.getLaunchIntentForPackage(info.activityInfo.packageName)
+                    if (launch != null) {
+                        launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(launch)
+                        return true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("PhoneActionHandler", "Launcher activity query error: ${e.message}")
+        }
+
+        // 3. Fallback: Search all installed applications
         try {
             val installedApps = pm.getInstalledApplications(0)
             for (app in installedApps) {
                 val label = pm.getApplicationLabel(app).toString().lowercase()
-                if (label.equals(lower, ignoreCase = true) || label.contains(lower) || lower.contains(label)) {
+                if (label == query || label.contains(query) || query.contains(label)) {
                     val launchIntent = pm.getLaunchIntentForPackage(app.packageName)
                     if (launchIntent != null) {
                         launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -385,9 +544,18 @@ class PhoneActionHandler(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            // Package lookup fallback
+            Log.e("PhoneActionHandler", "Installed apps search error: ${e.message}")
         }
 
-        return false
+        // 4. Universal Fallback: Web / Google Search or Store fallback so command never dead-ends
+        try {
+            val webSearch = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${Uri.encode(query)}")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(webSearch)
+            return true
+        } catch (e: Exception) {
+            return false
+        }
     }
 }

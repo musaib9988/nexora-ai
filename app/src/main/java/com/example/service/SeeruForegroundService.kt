@@ -14,18 +14,25 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
 import kotlinx.coroutines.*
+import java.util.Locale
 
-class SeeruForegroundService : Service() {
+class SeeruForegroundService : Service(), TextToSpeech.OnInitListener {
     private val serviceJob = Job()
     private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
     private var isListening = false
     private var audioRecord: AudioRecord? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var tts: TextToSpeech? = null
+    private var isTtsReady = false
 
     companion object {
         const val CHANNEL_ID = "seeru_assistant_channel"
@@ -58,6 +65,21 @@ class SeeruForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        try {
+            tts = TextToSpeech(applicationContext, this)
+        } catch (e: Exception) {
+            Log.e("SeeruService", "Error initializing TTS: ${e.message}")
+        }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts?.setLanguage(Locale("hi", "IN"))
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                tts?.setLanguage(Locale.ENGLISH)
+            }
+            isTtsReady = true
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -238,17 +260,17 @@ class SeeruForegroundService : Service() {
 
                     // Calculate sensitivity threshold:
                     // sensitivity ranges 0.1 to 1.0 (default 0.7)
-                    // threshold ranges 2800 (low sensitivity) down to 1000 (high sensitivity)
+                    // High sensitivity threshold: default ~700 RMS for normal voice recognition
                     val sensitivity = prefs.getFloat("pref_wake_sensitivity", 0.7f).coerceIn(0.1f, 1.0f)
-                    val threshold = 2800.0 - (sensitivity * 1800.0)
+                    val threshold = 1400.0 - (sensitivity * 1000.0)
 
                     if (rms > threshold) {
                         consecutiveSpeechFrames++
-                        if (consecutiveSpeechFrames >= 2) {
+                        if (consecutiveSpeechFrames >= 1) {
                             Log.d("SeeruService", "Voice wake activity detected (RMS: $rms > $threshold)")
                             triggerWakeWordDetected()
                             consecutiveSpeechFrames = 0
-                            delay(3000) // Debounce so multiple triggers don't collide
+                            delay(3500) // Debounce so multiple triggers don't collide
                         }
                     } else {
                         consecutiveSpeechFrames = 0
@@ -264,6 +286,28 @@ class SeeruForegroundService : Service() {
     }
 
     private fun triggerWakeWordDetected() {
+        // 1. Tactile haptic feedback
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vibratorManager?.defaultVibrator?.vibrate(VibrationEffect.createOneShot(120, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                vibrator?.vibrate(120)
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+
+        // 2. Audio speech feedback: "Ji! Mai sun rahi hu."
+        if (isTtsReady) {
+            try {
+                tts?.speak("Ji! Mai sun rahi hu.", TextToSpeech.QUEUE_FLUSH, null, "hey_wake_tts")
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+
         val broadcastIntent = Intent(BROADCAST_WAKE_WORD)
         sendBroadcast(broadcastIntent)
 
@@ -306,6 +350,12 @@ class SeeruForegroundService : Service() {
     override fun onDestroy() {
         stopForegroundListening()
         serviceJob.cancel()
+        try {
+            tts?.stop()
+            tts?.shutdown()
+        } catch (e: Exception) {
+            // Ignore
+        }
         super.onDestroy()
     }
 
