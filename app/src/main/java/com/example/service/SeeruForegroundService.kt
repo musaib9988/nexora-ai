@@ -27,7 +27,9 @@ class SeeruForegroundService : Service() {
 
     companion object {
         const val CHANNEL_ID = "seeru_assistant_channel"
+        const val ALERT_CHANNEL_ID = "seeru_wake_alert_channel"
         const val NOTIFICATION_ID = 2026
+        const val ALERT_NOTIFICATION_ID = 2027
         const val ACTION_START = "ACTION_START_SEERU"
         const val ACTION_STOP = "ACTION_STOP_SEERU"
         const val BROADCAST_WAKE_WORD = "com.example.seeru.WAKE_WORD_TRIGGERED"
@@ -69,22 +71,36 @@ class SeeruForegroundService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+
+            // Ongoing status channel
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "SEERU AI Hands-Free Service",
+                "Seeru AI Hands-Free Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Keeps SEERU AI wake word listener active in the background"
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
+
+            // High priority alert channel for when "Hey Seeru" is heard
+            val alertChannel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "Seeru AI Wake Word Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when 'Hey Seeru' is detected in the background"
+                enableVibration(true)
+            }
+            manager?.createNotificationChannel(alertChannel)
         }
     }
 
     private fun startForegroundListening() {
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("EXTRA_AUTO_LISTEN", true)
         }
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -94,10 +110,15 @@ class SeeruForegroundService : Service() {
         )
 
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Nexora AI Active")
-            .setContentText("Hands-free listening active. Say 'Hey Nexora' or tap to talk.")
+            .setContentTitle("Seeru AI Active")
+            .setContentText("Hands-free active. Say 'Hey Seeru' or tap to speak.")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
+            .addAction(
+                R.drawable.ic_launcher_foreground,
+                "Tap to Talk",
+                pendingIntent
+            )
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -142,19 +163,46 @@ class SeeruForegroundService : Service() {
 
         if (bufferSize <= 0) return@withContext
 
-        try {
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize
-            )
+        // Try standard MIC first, fallback to VOICE_RECOGNITION
+        val audioSources = listOf(
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        )
 
-            val buffer = ShortArray(bufferSize)
+        var recordCreated = false
+        for (source in audioSources) {
+            try {
+                val record = AudioRecord(
+                    source,
+                    sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize.coerceAtLeast(4096)
+                )
+                if (record.state == AudioRecord.STATE_INITIALIZED) {
+                    audioRecord = record
+                    recordCreated = true
+                    break
+                } else {
+                    record.release()
+                }
+            } catch (e: Exception) {
+                // Try next audio source
+            }
+        }
+
+        if (!recordCreated || audioRecord == null) {
+            Log.e("SeeruService", "Could not initialize AudioRecord with any audio source")
+            return@withContext
+        }
+
+        try {
+            val buffer = ShortArray(bufferSize.coerceAtLeast(2048))
             audioRecord?.startRecording()
 
             var consecutiveSpeechFrames = 0
+            val prefs = getSharedPreferences("seeru_prefs", Context.MODE_PRIVATE)
 
             while (isListening) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
@@ -165,20 +213,25 @@ class SeeruForegroundService : Service() {
                     }
                     val rms = Math.sqrt(sum / read)
 
-                    // Acoustic voice activity detection
-                    if (rms > 6500) {
+                    // Calculate sensitivity threshold:
+                    // sensitivity ranges 0.1 to 1.0 (default 0.7)
+                    // threshold ranges 2800 (low sensitivity) down to 1000 (high sensitivity)
+                    val sensitivity = prefs.getFloat("pref_wake_sensitivity", 0.7f).coerceIn(0.1f, 1.0f)
+                    val threshold = 2800.0 - (sensitivity * 1800.0)
+
+                    if (rms > threshold) {
                         consecutiveSpeechFrames++
                         if (consecutiveSpeechFrames >= 2) {
-                            Log.d("SeeruService", "Voice wake activity detected!")
+                            Log.d("SeeruService", "Voice wake activity detected (RMS: $rms > $threshold)")
                             triggerWakeWordDetected()
                             consecutiveSpeechFrames = 0
-                            delay(2500) // Debounce so multiple triggers don't collide
+                            delay(3000) // Debounce so multiple triggers don't collide
                         }
                     } else {
                         consecutiveSpeechFrames = 0
                     }
                 }
-                delay(40)
+                delay(30)
             }
         } catch (e: SecurityException) {
             Log.e("SeeruService", "Microphone permission denied: ${e.message}")
@@ -191,15 +244,39 @@ class SeeruForegroundService : Service() {
         val broadcastIntent = Intent(BROADCAST_WAKE_WORD)
         sendBroadcast(broadcastIntent)
 
-        // Also launch activity if background allows
         val launchIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             putExtra("EXTRA_AUTO_LISTEN", true)
         }
+
+        // Show Heads-Up Alert Notification for Android 10+ background activity policy
+        val alertPendingIntent = PendingIntent.getActivity(
+            this,
+            1,
+            launchIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val alertNotification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setContentTitle("🎙️ 'Hey Seeru' Detected!")
+            .setContentText("Listening for your command... Tap to speak.")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(alertPendingIntent)
+            .setFullScreenIntent(alertPendingIntent, true)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.notify(ALERT_NOTIFICATION_ID, alertNotification)
+
+        // Try direct launch if activity allows
         try {
             startActivity(launchIntent)
         } catch (e: Exception) {
-            // Background activity start restrictions on Android 10+
+            // Handled via Heads-up notification
         }
     }
 

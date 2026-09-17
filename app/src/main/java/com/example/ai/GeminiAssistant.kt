@@ -18,7 +18,7 @@ sealed class AssistantOutcome {
     data class CallAction(val contactName: String) : AssistantOutcome()
     data class MessageAction(val recipient: String, val messageBody: String) : AssistantOutcome()
     data class CameraAction(val mode: String = "OPEN") : AssistantOutcome()
-    data class MusicAction(val command: String) : AssistantOutcome()
+    data class MusicAction(val command: String, val songQuery: String = "") : AssistantOutcome()
     data class AlarmAction(val command: String = "SHOW") : AssistantOutcome()
     data class AppAction(val appName: String) : AssistantOutcome()
     data class RoutineAction(val routineName: String) : AssistantOutcome()
@@ -380,18 +380,22 @@ class GeminiAssistant {
             }
 
             // Messages / SMS
-            lower.startsWith("send a message") || lower.startsWith("send message") || lower.contains("message bhejo") || lower.contains("msg bhejo") -> {
-                AssistantOutcome.MessageAction(recipient = "Ali", messageBody = "Hello from Nexora AI!")
+            lower.contains("message") || lower.contains("msg") || lower.contains("sms") || lower.contains("text karo") || lower.startsWith("send message") -> {
+                val (recipient, body) = extractMessageDetails(lower)
+                AssistantOutcome.MessageAction(recipient = recipient, messageBody = body)
             }
 
             // Camera
-            lower.contains("camera") || lower.contains("photo khicho") || lower.contains("tasveer") ->
+            lower.contains("camera") || lower.contains("photo khicho") || lower.contains("tasveer") ||
+                    lower.contains("photo lo") || lower.contains("selfie") || lower.contains("picture") ->
                 AssistantOutcome.CameraAction()
 
-            // Music
-            lower.contains("music") || lower.contains("gaana") || lower.contains("song") -> {
-                val cmd = if (lower.contains("pause") || lower.contains("band") || lower.contains("stop")) "PAUSE" else "PLAY"
-                AssistantOutcome.MusicAction(cmd)
+            // Music / Songs
+            lower.contains("music") || lower.contains("gaana") || lower.contains("gana") || lower.contains("song") || lower.contains("geet") -> {
+                val isPause = lower.contains("pause") || lower.contains("band") || lower.contains("stop") || lower.contains("roko")
+                val cmd = if (isPause) "PAUSE" else "PLAY"
+                val songQuery = if (isPause) "" else extractSongQuery(lower)
+                AssistantOutcome.MusicAction(command = cmd, songQuery = songQuery)
             }
 
             // Alarms
@@ -400,7 +404,12 @@ class GeminiAssistant {
 
             // Open Apps
             lower.startsWith("open ") || lower.contains("kholo") -> {
-                val app = lower.replace("open ", "").replace("kholo", "").trim()
+                val app = lower
+                    .replace("hey seeru", "")
+                    .replace("seeru", "")
+                    .replace("open ", "")
+                    .replace("kholo", "")
+                    .trim()
                 AssistantOutcome.AppAction(appName = app.ifEmpty { "YouTube" })
             }
 
@@ -410,7 +419,7 @@ class GeminiAssistant {
 
             // Greetings & Chat
             lower.contains("hello") || lower.contains("hi") || lower.contains("namaste") || lower.contains("salam") ->
-                AssistantOutcome.SpokenResponse("Namaste! Mai Nexora hu. Mai aapki kya madad kar sakti hu?")
+                AssistantOutcome.SpokenResponse("Namaste! Mai Seeru hu. Mai aapki kya madad kar sakti hu?")
 
             lower.contains("kaise ho") || lower.contains("how are you") ->
                 AssistantOutcome.SpokenResponse("Mai bilkul theek hu! Aap batayein, mai aapki kya madad karu?")
@@ -424,6 +433,64 @@ class GeminiAssistant {
                     }
                 )
         }
+    }
+
+    private fun extractMessageDetails(text: String): Pair<String, String> {
+        val clean = text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("seeru", "")
+            .replace("nexora", "")
+            .trim()
+
+        // Match pattern: "[Name] ko message/sms bhejo/karo [Body]"
+        val koPattern = Regex("""^([a-zA-Z0-9_\u0600-\u06FF\u0900-\u097F]+)\s+ko\s+(?:message|msg|sms)\s+(?:bhejo|karo|send\s*karo)\s*(.*)$""")
+        val koMatch = koPattern.find(clean)
+        if (koMatch != null) {
+            val rec = koMatch.groupValues[1].trim()
+            val body = koMatch.groupValues[2].trim()
+            return Pair(rec, if (body.isNotBlank()) body else "Hello!")
+        }
+
+        // Match English: "send message to [Name] saying [Body]"
+        val enPattern = Regex("""^send\s+(?:a\s+)?(?:message|sms)\s+to\s+([a-zA-Z0-9_]+)(?:\s+saying|\s+that)?\s*(.*)$""")
+        val enMatch = enPattern.find(clean)
+        if (enMatch != null) {
+            val rec = enMatch.groupValues[1].trim()
+            val body = enMatch.groupValues[2].trim()
+            return Pair(rec, if (body.isNotBlank()) body else "Hello!")
+        }
+
+        // Generic: "message bhejo [body]" or "message send karo [body]"
+        val genericBody = clean
+            .replace("message send karo", "")
+            .replace("message bhejo", "")
+            .replace("message karo", "")
+            .replace("msg bhejo", "")
+            .replace("sms bhejo", "")
+            .replace("sms karo", "")
+            .replace("send message", "")
+            .trim()
+
+        return Pair("Ali", if (genericBody.isNotBlank()) genericBody else "Hello from Seeru AI!")
+    }
+
+    private fun extractSongQuery(text: String): String {
+        return text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("seeru", "")
+            .replace("nexora", "")
+            .replace("gaana bajao", "")
+            .replace("gana bajao", "")
+            .replace("song play karo", "")
+            .replace("play song", "")
+            .replace("play music", "")
+            .replace("play ", "")
+            .replace("music chalao", "")
+            .replace("song chalao", "")
+            .replace("song", "")
+            .trim()
     }
 
     private fun extractDeviceName(text: String, defaultName: String): String {

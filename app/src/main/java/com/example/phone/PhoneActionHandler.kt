@@ -25,34 +25,120 @@ class PhoneActionHandler(private val context: Context) {
         context.startActivity(intent)
     }
 
-    fun composeSms(recipient: String, body: String) {
-        val intent = Intent(Intent.ACTION_SENDTO).apply {
-            data = Uri.parse("smsto:$recipient")
+    fun composeSms(recipientPhoneOrName: String, body: String): Boolean {
+        val digits = recipientPhoneOrName.filter { it.isDigit() || it == '+' }
+        val uri = if (digits.isNotBlank()) Uri.parse("smsto:$digits") else Uri.parse("smsto:")
+
+        val intent = Intent(Intent.ACTION_SENDTO, uri).apply {
             putExtra("sms_body", body)
+            putExtra(Intent.EXTRA_TEXT, body)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        context.startActivity(intent)
+
+        return try {
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            // Fallback to general messaging app
+            val fallback = Intent(Intent.ACTION_VIEW).apply {
+                type = "vnd.android-dir/mms-sms"
+                putExtra("sms_body", body)
+                putExtra(Intent.EXTRA_TEXT, body)
+                if (digits.isNotBlank()) putExtra("address", digits)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            try {
+                context.startActivity(fallback)
+                true
+            } catch (ex: Exception) {
+                false
+            }
+        }
     }
 
-    fun openCamera() {
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+    fun openCamera(): Boolean {
+        // 1. Primary standard intent to launch the device camera viewfinder
+        val stillIntent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         try {
-            context.startActivity(intent)
+            context.startActivity(stillIntent)
+            return true
         } catch (e: Exception) {
-            // Fallback to general camera app
-            val fallback = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_APP_MESSAGING)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            context.startActivity(fallback)
+            // Fallback
         }
+
+        // 2. Action image capture intent
+        val captureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        try {
+            context.startActivity(captureIntent)
+            return true
+        } catch (e: Exception) {
+            // Fallback
+        }
+
+        // 3. Look for camera package in installed packages
+        try {
+            val pm = context.packageManager
+            val installedApps = pm.getInstalledApplications(0)
+            for (app in installedApps) {
+                val pkg = app.packageName.lowercase()
+                if (pkg.contains("camera")) {
+                    val launchIntent = pm.getLaunchIntentForPackage(app.packageName)
+                    if (launchIntent != null) {
+                        launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(launchIntent)
+                        return true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+
+        return false
     }
 
-    fun controlMedia(command: String) {
+    fun controlMedia(command: String, songQuery: String = "") {
+        val upper = command.uppercase()
+
+        if (upper == "PLAY") {
+            // 1. Play built-in soothing melody so user immediately hears music
+            BuiltInMusicPlayer.play()
+
+            // 2. If a specific song or artist was mentioned, also try to open music search/YouTube
+            if (songQuery.isNotBlank()) {
+                val searchIntent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                    putExtra(android.app.SearchManager.QUERY, songQuery)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                try {
+                    context.startActivity(searchIntent)
+                } catch (e: Exception) {
+                    // Fallback to YouTube web/app
+                    val ytIntent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://www.youtube.com/results?search_query=${Uri.encode(songQuery)}")
+                    ).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    try {
+                        context.startActivity(ytIntent)
+                    } catch (ex: Exception) {
+                        // Ignore
+                    }
+                }
+            }
+        } else {
+            // PAUSE or STOP
+            BuiltInMusicPlayer.stop()
+        }
+
+        // 3. Also dispatch system media key events for any background music players
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-        val keyCode = when (command.uppercase()) {
+        val keyCode = when (upper) {
             "PLAY" -> KeyEvent.KEYCODE_MEDIA_PLAY
             "PAUSE" -> KeyEvent.KEYCODE_MEDIA_PAUSE
             "NEXT" -> KeyEvent.KEYCODE_MEDIA_NEXT
@@ -60,10 +146,14 @@ class PhoneActionHandler(private val context: Context) {
             else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
         }
 
-        val eventDown = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
-        val eventUp = KeyEvent(KeyEvent.ACTION_UP, keyCode)
-        audioManager.dispatchMediaKeyEvent(eventDown)
-        audioManager.dispatchMediaKeyEvent(eventUp)
+        try {
+            val eventDown = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
+            val eventUp = KeyEvent(KeyEvent.ACTION_UP, keyCode)
+            audioManager.dispatchMediaKeyEvent(eventDown)
+            audioManager.dispatchMediaKeyEvent(eventUp)
+        } catch (e: Exception) {
+            // Ignore
+        }
     }
 
     fun openSettings() {

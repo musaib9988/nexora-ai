@@ -81,6 +81,12 @@ class MainActivity : ComponentActivity() {
             registerReceiver(wakeWordReceiver, filter)
         }
 
+        if (intent?.getBooleanExtra("EXTRA_AUTO_LISTEN", false) == true) {
+            window.decorView.postDelayed({
+                triggerVoiceInput()
+            }, 600)
+        }
+
         setContent {
             var isDarkTheme by remember { mutableStateOf(true) }
 
@@ -95,6 +101,16 @@ class MainActivity : ComponentActivity() {
                     onToggleDarkTheme = { isDarkTheme = it },
                     registerVoiceTrigger = { action -> triggerVoiceInputAction = action }
                 )
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("EXTRA_AUTO_LISTEN", false)) {
+            runOnUiThread {
+                triggerVoiceInput()
             }
         }
     }
@@ -126,7 +142,7 @@ fun SeeruMainContent(
     val dao = database.seeruDao()
 
     // Persistent preferences
-    val prefs = remember { context.getSharedPreferences("nexora_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences("seeru_prefs", Context.MODE_PRIVATE) }
     var isIotModeEnabled by remember {
         mutableStateOf(prefs.getBoolean("pref_iot_mode_enabled", false))
     }
@@ -154,7 +170,9 @@ fun SeeruMainContent(
     var isHandsFreeActive by remember {
         mutableStateOf(prefs.getBoolean("pref_hands_free_active", false))
     }
-    var wakeSensitivity by remember { mutableFloatStateOf(0.7f) }
+    var wakeSensitivity by remember {
+        mutableFloatStateOf(prefs.getFloat("pref_wake_sensitivity", 0.7f))
+    }
 
     // Confirmation dialog state
     var pendingConfirmationMessage by remember { mutableStateOf<String?>(null) }
@@ -332,29 +350,70 @@ fun SeeruMainContent(
                 }
 
                 is AssistantOutcome.MessageAction -> {
-                    pendingConfirmationMessage = "Kya aap ${outcome.recipient} ko message bhejna chahte hain: \"${outcome.messageBody}\"?"
-                    pendingActionToConfirm = {
-                        phoneActionHandler.composeSms(outcome.recipient, outcome.messageBody)
-                        val reply = "SMS draft tayar hai. Kripya send karein."
-                        speechManager.speak(reply)
-                        lastSeeruResponse = reply
+                    val alias = dao.findContactByAlias(outcome.recipient.lowercase())
+                    val displayName = alias?.actualName ?: outcome.recipient.ifEmpty { "Contact" }
+                    val phoneNum = alias?.phoneNumber ?: outcome.recipient
+
+                    val reply = if (outcome.messageBody.isNotBlank()) {
+                        "$displayName ko message bheja ja raha hai: \"${outcome.messageBody}\""
+                    } else {
+                        "SMS app open kiya ja raha hai."
+                    }
+                    speechManager.speak(reply)
+                    lastSeeruResponse = reply
+
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = reply,
+                            actionType = "SMS: $displayName"
+                        )
+                    )
+
+                    val opened = phoneActionHandler.composeSms(phoneNum, outcome.messageBody)
+                    if (!opened) {
+                        Toast.makeText(context, "Koi SMS app nahi mili", Toast.LENGTH_SHORT).show()
                     }
                     orbState = OrbState.IDLE
                 }
 
                 is AssistantOutcome.CameraAction -> {
-                    phoneActionHandler.openCamera()
-                    val reply = "Camera khol diya gaya hai."
+                    val opened = phoneActionHandler.openCamera()
+                    val reply = if (opened) "Camera open kar diya gaya hai." else "Camera app nahi mila."
                     speechManager.speak(reply)
                     lastSeeruResponse = reply
+
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = reply,
+                            actionType = "Camera"
+                        )
+                    )
                     orbState = OrbState.IDLE
                 }
 
                 is AssistantOutcome.MusicAction -> {
-                    phoneActionHandler.controlMedia(outcome.command)
-                    val reply = if (outcome.command == "PLAY") "Gaana shuru kiya ja raha hai." else "Music pause kar diya gaya hai."
+                    phoneActionHandler.controlMedia(outcome.command, outcome.songQuery)
+                    val reply = if (outcome.command == "PLAY") {
+                        if (outcome.songQuery.isNotBlank()) {
+                            "${outcome.songQuery} play kiya ja raha hai."
+                        } else {
+                            "Gaana bajna shuru ho gaya hai."
+                        }
+                    } else {
+                        "Music pause kar diya gaya hai."
+                    }
                     speechManager.speak(reply)
                     lastSeeruResponse = reply
+
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = reply,
+                            actionType = "Music: ${outcome.command}"
+                        )
+                    )
                     orbState = OrbState.IDLE
                 }
 
@@ -670,7 +729,10 @@ fun SeeruMainContent(
                         }
                     },
                     wakeWordSensitivity = wakeSensitivity,
-                    onSensitivityChange = { wakeSensitivity = it },
+                    onSensitivityChange = {
+                        wakeSensitivity = it
+                        prefs.edit().putFloat("pref_wake_sensitivity", it).apply()
+                    },
                     isDarkTheme = isDarkTheme,
                     onToggleDarkTheme = onToggleDarkTheme,
                     isIotModeEnabled = isIotModeEnabled,
