@@ -25,7 +25,8 @@ import com.example.ui.theme.*
 fun ChatScreen(
     conversations: List<ConversationEntity>,
     onSendMessage: (String) -> Unit,
-    onClearHistory: () -> Unit
+    onClearHistory: () -> Unit,
+    onOpenAiTools: () -> Unit = {}
 ) {
     var inputText by remember { mutableStateOf("") }
 
@@ -49,19 +50,29 @@ fun ChatScreen(
                     color = TextPrimary
                 )
                 Text(
-                    text = "Gemini AI Brain & Action Logs",
+                    text = "Gemini 3.5 Flash Brain & Action Logs",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
             }
 
-            if (conversations.isNotEmpty()) {
-                IconButton(onClick = onClearHistory) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onOpenAiTools) {
                     Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Clear History",
-                        tint = TextMuted
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = "AI Studio Tools",
+                        tint = CyanPrimary
                     )
+                }
+
+                if (conversations.isNotEmpty()) {
+                    IconButton(onClick = onClearHistory) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Clear History",
+                            tint = TextMuted
+                        )
+                    }
                 }
             }
         }
@@ -116,6 +127,23 @@ fun ChatScreen(
                 .padding(top = 8.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(
+                onClick = onOpenAiTools,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(DarkSurfaceElevated)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = "AI Studio Tools & Vision",
+                    tint = CyanPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
@@ -132,7 +160,7 @@ fun ChatScreen(
                 singleLine = true
             )
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             IconButton(
                 onClick = {
@@ -142,7 +170,7 @@ fun ChatScreen(
                     }
                 },
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(CyanPrimary)
             ) {

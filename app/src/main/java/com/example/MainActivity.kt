@@ -33,6 +33,7 @@ import com.example.iot.Esp32Client
 import com.example.phone.PhoneActionHandler
 import com.example.service.SeeruForegroundService
 import com.example.speech.SpeechManager
+import com.example.ui.components.AiToolsModalBottomSheet
 import com.example.ui.components.OrbState
 import com.example.ui.screens.*
 import com.example.ui.theme.*
@@ -178,6 +179,9 @@ fun SeeruMainContent(
     var pendingConfirmationMessage by remember { mutableStateOf<String?>(null) }
     var pendingActionToConfirm by remember { mutableStateOf<(() -> Unit)?>(null) }
 
+    // AI Studio Tools modal sheet state
+    var showAiToolsSheet by remember { mutableStateOf(false) }
+
     // Permission launcher
     val permissionsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -205,6 +209,47 @@ fun SeeruMainContent(
         lastUserTranscript = userText
         orbState = OrbState.THINKING
         statusMessage = "Analyzing with Gemini..."
+
+        val lower = userText.lowercase().trim()
+
+        // Quick AI Feature: Daily Briefing
+        if (lower.contains("briefing") || lower.contains("morning update") || lower.contains("aaj ka din")) {
+            coroutineScope.launch {
+                dao.insertConversation(ConversationEntity(role = "USER", text = userText))
+                val briefing = geminiAssistant.generateDailyBriefing()
+                lastSeeruResponse = briefing
+                speechManager.speak(briefing)
+                dao.insertConversation(
+                    ConversationEntity(
+                        role = "ASSISTANT",
+                        text = briefing,
+                        actionType = "AI Daily Briefing"
+                    )
+                )
+                orbState = OrbState.SPEAKING
+            }
+            return
+        }
+
+        // Quick AI Feature: AI Tools / Vision
+        if (lower.contains("ai studio") || lower.contains("ai tool") || lower.contains("vision") || lower.contains("photo analyze") || lower.contains("tasveer")) {
+            coroutineScope.launch {
+                dao.insertConversation(ConversationEntity(role = "USER", text = userText))
+                val reply = "Opening Nexora AI Studio & Vision Tools."
+                lastSeeruResponse = reply
+                speechManager.speak(reply)
+                showAiToolsSheet = true
+                dao.insertConversation(
+                    ConversationEntity(
+                        role = "ASSISTANT",
+                        text = reply,
+                        actionType = "AI Studio"
+                    )
+                )
+                orbState = OrbState.IDLE
+            }
+            return
+        }
 
         coroutineScope.launch {
             // Save user message to Room
@@ -627,6 +672,7 @@ fun SeeruMainContent(
                     isIotModeEnabled = isIotModeEnabled,
                     onMicClick = { onMicButtonClicked() },
                     onQuickActionClick = { cmd -> executeCommand(cmd) },
+                    onOpenAiTools = { showAiToolsSheet = true },
                     onConfirmAction = { confirmed ->
                         if (confirmed) pendingActionToConfirm?.invoke()
                         pendingConfirmationMessage = null
@@ -686,7 +732,8 @@ fun SeeruMainContent(
                     onSendMessage = { text -> executeCommand(text) },
                     onClearHistory = {
                         coroutineScope.launch { dao.clearConversations() }
-                    }
+                    },
+                    onOpenAiTools = { showAiToolsSheet = true }
                 )
 
                 3 -> if (isIotModeEnabled) {
@@ -752,6 +799,21 @@ fun SeeruMainContent(
                     }
                 )
             }
+        }
+
+        // AI Studio & Vision Tools Modal Bottom Sheet
+        if (showAiToolsSheet) {
+            AiToolsModalBottomSheet(
+                geminiAssistant = geminiAssistant,
+                onDismiss = { showAiToolsSheet = false },
+                onSpeak = { text ->
+                    statusMessage = text
+                    speechManager.speak(text)
+                },
+                onSendSms = { messageBody ->
+                    phoneActionHandler.composeSms("", messageBody)
+                }
+            )
         }
     }
 }

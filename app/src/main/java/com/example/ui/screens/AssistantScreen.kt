@@ -42,6 +42,7 @@ fun AssistantScreen(
     isIotModeEnabled: Boolean = false,
     onMicClick: () -> Unit,
     onQuickActionClick: (String) -> Unit,
+    onOpenAiTools: () -> Unit = {},
     onConfirmAction: (Boolean) -> Unit,
     pendingConfirmationMessage: String?
 ) {
@@ -259,7 +260,61 @@ fun AssistantScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // AI Studio & Vision Tools Banner
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = VioletSecondary.copy(alpha = 0.18f),
+                border = BorderStroke(1.dp, VioletSecondary.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenAiTools() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(VioletSecondary.copy(alpha = 0.35f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = CyanPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "✨ Nexora AI Studio",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Photo Vision • Briefing • Smart SMS Crafter",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Open AI Studio",
+                        tint = CyanPrimary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Quick Voice Action Chips Header
             Text(
