@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 1. Ambient Radial Glow behind the N Emblem -->
+    <path
+        android:pathData="M54,24 C70.6,24 84,37.4 84,54 C84,70.6 70.6,84 54,84 C37.4,84 24,70.6 24,54 C24,37.4 37.4,24 54,24 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="32"
+                android:type="radial">
+                <item android:color="#3800E5FF" android:offset="0.0" />
+                <item android:color="#1A0091EA" android:offset="0.6" />
+                <item android:color="#00000000" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 2. Outer Orbital Ring Soft Glow (Cyan) -->
+    <path
+        android:pathData="M54,26 A28,28 0 1,1 53.99,26 Z"
+        android:strokeWidth="3.5"
+        android:strokeColor="#4000E5FF"
+        android:fillColor="#00000000" />
+
+    <!-- 3. Outer Orbital Ring Sharp Line -->
+    <path
+        android:pathData="M54,26 A28,28 0 1,1 53.99,26 Z"
+        android:strokeWidth="1.2"
+        android:strokeColor="#00F0FF"
+        android:fillColor="#00000000" />
+
+    <!-- 4. Orbital Satellite Node 1 (Top-Right ~ 35 deg) -->
+    <path
+        android:pathData="M75.4,33 C77.1,33 78.4,34.3 78.4,36 C78.4,37.7 77.1,39 75.4,39 C73.7,39 72.4,37.7 72.4,36 C72.4,34.3 73.7,33 75.4,33 Z"
+        android:fillColor="#4D00F0FF" />
+    <path
+        android:pathData="M75.4,34.2 C76.4,34.2 77.2,35.0 77.2,36 C77.2,37.0 76.4,37.8 75.4,37.8 C74.4,37.8 73.6,37.0 73.6,36 C73.6,35.0 74.4,34.2 75.4,34.2 Z"
+        android:fillColor="#00F0FF" />
+    <path
+        android:pathData="M75.4,35.1 C75.9,35.1 76.3,35.5 76.3,36 C76.3,36.5 75.9,36.9 75.4,36.9 C74.9,36.9 74.5,36.5 74.5,36 C74.5,35.5 74.9,35.1 75.4,35.1 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- 5. Orbital Satellite Node 2 (Bottom-Left ~ 155 deg) -->
+    <path
+        android:pathData="M28.6,62.8 C30.3,62.8 31.6,64.1 31.6,65.8 C31.6,67.5 30.3,68.8 28.6,68.8 C26.9,68.8 25.6,67.5 25.6,65.8 C25.6,64.1 26.9,62.8 28.6,62.8 Z"
+        android:fillColor="#4D00F0FF" />
+    <path
+        android:pathData="M28.6,64.0 C29.6,64.0 30.4,64.8 30.4,65.8 C30.4,66.8 29.6,67.6 28.6,67.6 C27.6,67.6 26.8,66.8 26.8,65.8 C26.8,64.8 27.6,64.0 28.6,64.0 Z"
+        android:fillColor="#00F0FF" />
+    <path
+        android:pathData="M28.6,64.9 C29.1,64.9 29.5,65.3 29.5,65.8 C29.5,66.3 29.1,66.7 28.6,66.7 C28.1,66.7 27.7,66.3 27.7,65.8 C27.7,65.3 28.1,64.9 28.6,64.9 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- 6. Right Vertical Stem of 'N' (Underlayer with deep cobalt/electric blue gradient) -->
+    <path
+        android:pathData="M61,33 L68.5,37.5 L68.5,62.5 C68.5,65.5 66.2,67.5 63,67.5 C60.5,67.5 59,65.8 57.5,63.5 L61,33 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="61"
+                android:startY="33"
+                android:endX="68.5"
+                android:endY="67.5"
+                android:type="linear">
+                <item android:color="#00E5FF" android:offset="0.0" />
+                <item android:color="#0066FF" android:offset="0.5" />
+                <item android:color="#0B2066" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 7. Sharp Beveled Top Wing of Right Stem -->
+    <path
+        android:pathData="M61,33 L68.5,37.5 L68.5,52 L61,46 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="61"
+                android:startY="33"
+                android:endX="68.5"
+                android:endY="52"
+                android:type="linear">
+                <item android:color="#38C6FF" android:offset="0.0" />
+                <item android:color="#0055D4" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 8. Deep Fold Shadow (Where diagonal ribbon crosses right stem) -->
+    <path
+        android:pathData="M54,48 L68.5,58 L68.5,64 C67,66.5 64,67.5 62,67 L53,55 Z"
+        android:fillColor="#040C24"
+        android:fillAlpha="0.85" />
+
+    <!-- 9. Main Front Ribbon: Left Stem & Smooth Diagonal Fold Loop -->
+    <path
+        android:pathData="M37.5,67 
+                          L37.5,43 
+                          C37.5,35.5 43,33 48.5,34 
+                          C53,35 56.5,38 60,43 
+                          L66.5,54.5 
+                          C69,59 69,63.5 66.5,66 
+                          C64,68.5 59.5,68.5 56,65 
+                          L53.5,62 
+                          L45,47 
+                          L45,63.5 
+                          Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="37.5"
+                android:startY="33"
+                android:endX="68"
+                android:endY="68"
+                android:type="linear">
+                <item android:color="#7DF9FF" android:offset="0.0" />
+                <item android:color="#00D2FF" android:offset="0.3" />
+                <item android:color="#0072FF" android:offset="0.75" />
+                <item android:color="#0045C7" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 10. Specular Gloss Highlight along Left Arch and Upper Ribbon Edge -->
+    <path
+        android:pathData="M37.5,47 L37.5,43 C37.5,36 43,33.5 48,34.5 C52.5,35.5 56,38.5 59.5,43.5 L58,45 C54.5,40.5 51.5,37.5 47.5,36.5 C43.5,35.5 39.5,37.5 39.5,43 L39.5,47 Z"
+        android:fillAlpha="0.9">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="37.5"
+                android:startY="33"
+                android:endX="59.5"
+                android:endY="45"
+                android:type="linear">
+                <item android:color="#FFFFFF" android:offset="0.0" />
+                <item android:color="#A6F6FF" android:offset="0.5" />
+                <item android:color="#00E5FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 11. Subtle Bottom Edge Bevel Cut for Left Stem -->
+    <path
+        android:pathData="M37.5,67 L45,63.5 L45,65.5 L37.5,69 Z"
+        android:fillColor="#0091EA"
+        android:fillAlpha="0.7" />
+
+</vector>

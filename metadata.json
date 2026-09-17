@@ -1,0 +1,6 @@
+{
+  "name": "Nexora",
+  "description": "Nexora - Smarter • Connected • Together by Musaib Hamid. AI assistant with voice wake word and ESP32 smart home automation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
