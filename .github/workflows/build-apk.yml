@@ -56,6 +56,7 @@ jobs:
           mkdir -p public
           cp app/build/outputs/apk/debug/app-debug.apk public/nexora-ai.apk
           cp app/build/outputs/apk/debug/app-debug.apk nexora-ai.apk
+          cp index.html public/index.html || true
 
       - name: Upload APK to GitHub Artifacts
         uses: actions/upload-artifact@v4

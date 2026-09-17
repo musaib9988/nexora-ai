@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nexora AI — Smart Personal AI Assistant & ESP32 Smart Home for Android</title>
+  <meta name="description" content="Nexora AI: Siri-style personal assistant for Android with ESP32 smart home automation, powered by Gemini 3.5 Flash with fluent Hinglish voice control." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0B0E17;
+      --surface: #131926;
+      --surface-elevated: #1B2337;
+      --border: #263352;
+      --cyan: #00E5FF;
+      --cyan-glow: #84FFFF;
+      --violet: #7C4DFF;
+      --blue: #2979FF;
+      --text-primary: #F1F5F9;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --success: #00E676;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* Ambient background glowing orbs */
+    .ambient-glow {
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(circle, rgba(0, 229, 255, 0.12) 0%, rgba(124, 77, 255, 0.08) 45%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(80px);
+    }
+
+    .ambient-glow-bottom {
+      position: fixed;
+      bottom: -10%;
+      right: 10%;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(124, 77, 255, 0.1) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(90px);
+    }
+
+    /* Navigation */
+    nav {
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(11, 14, 23, 0.85);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      border-radius: 0 0 16px 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .brand-emblem {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--cyan) 0%, var(--violet) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.4);
+    }
+
+    .brand-emblem svg {
+      width: 20px;
+      height: 20px;
+      fill: #0B0E17;
+    }
+
+    .brand-name {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      background: linear-gradient(90deg, #FFFFFF, var(--cyan-glow));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--cyan);
+    }
+
+    .btn-nav {
+      background: rgba(0, 229, 255, 0.1);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-nav:hover {
+      background: var(--cyan);
+      color: #0B0E17;
+      box-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 60px 0 80px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(124, 77, 255, 0.15);
+      border: 1px solid rgba(124, 77, 255, 0.4);
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--cyan-glow);
+      margin-bottom: 24px;
+      animation: pulse 2.5s infinite;
+    }
+
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 6vw, 4.2rem);
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.15;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #FFFFFF 30%, var(--cyan-glow) 70%, var(--violet) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      color: var(--text-secondary);
+      max-width: 760px;
+      margin: 0 auto 40px;
+      font-weight: 400;
+    }
+
+    .cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 60px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, var(--cyan) 0%, #00B0FF 100%);
+      color: #0B0E17;
+      font-weight: 700;
+      font-size: 1.05rem;
+      padding: 16px 32px;
+      border-radius: 14px;
+      text-decoration: none;
+      box-shadow: 0 10px 30px rgba(0, 229, 255, 0.3);
+      transition: all 0.25s ease;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 40px rgba(0, 229, 255, 0.5);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface-elevated);
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 1.05rem;
+      padding: 16px 28px;
+      border-radius: 14px;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      transition: all 0.25s ease;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      background: rgba(0, 229, 255, 0.05);
+    }
+
+    /* Mockup Showcase */
+    .mockup-container {
+      max-width: 860px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .phone-frame {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 36px;
+      padding: 24px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(0, 229, 255, 0.15);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .phone-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+
+    .status-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--success);
+      background: rgba(0, 230, 118, 0.12);
+      border: 1px solid rgba(0, 230, 118, 0.3);
+      padding: 4px 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .orb-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 0;
+    }
+
+    .glowing-orb {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #84FFFF 0%, #00E5FF 30%, #7C4DFF 70%, #0B0E17 100%);
+      box-shadow: 0 0 60px rgba(0, 229, 255, 0.5), inset 0 0 20px rgba(255, 255, 255, 0.8);
+      animation: float 4s ease-in-out infinite alternate;
+      cursor: pointer;
+    }
+
+    @keyframes float {
+      0% { transform: scale(0.96) translateY(0); filter: drop-shadow(0 0 30px rgba(0,229,255,0.4)); }
+      100% { transform: scale(1.04) translateY(-10px); filter: drop-shadow(0 0 60px rgba(124,77,255,0.6)); }
+    }
+
+    .caption {
+      margin-top: 20px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--cyan);
+    }
+
+    .waveform-bars {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      margin-top: 14px;
+    }
+
+    .bar {
+      width: 4px;
+      background: linear-gradient(to top, var(--violet), var(--cyan));
+      border-radius: 4px;
+      animation: wave 1.2s ease-in-out infinite alternate;
+    }
+
+    .bar:nth-child(1) { height: 10px; animation-delay: 0.1s; }
+    .bar:nth-child(2) { height: 24px; animation-delay: 0.2s; }
+    .bar:nth-child(3) { height: 32px; animation-delay: 0.3s; }
+    .bar:nth-child(4) { height: 18px; animation-delay: 0.15s; }
+    .bar:nth-child(5) { height: 28px; animation-delay: 0.25s; }
+    .bar:nth-child(6) { height: 14px; animation-delay: 0.05s; }
+
+    @keyframes wave {
+      0% { transform: scaleY(0.4); }
+      100% { transform: scaleY(1.2); }
+    }
+
+    /* Dialogue Card Mockup */
+    .dialogue-card {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px 20px;
+      margin-top: 24px;
+      text-align: left;
+    }
+
+    .dialogue-item {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .dialogue-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .avatar-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .user-avatar {
+      background: rgba(0, 229, 255, 0.15);
+      color: var(--cyan);
+    }
+
+    .ai-avatar {
+      background: rgba(124, 77, 255, 0.25);
+      color: var(--violet);
+    }
+
+    .dialogue-text h4 {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .dialogue-text p {
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+
+    /* Section Styles */
+    .section-title {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .section-title h2 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+
+    .section-title p {
+      color: var(--text-secondary);
+      font-size: 1.05rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* Features Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 80px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(0, 229, 255, 0.5);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 25px rgba(0, 229, 255, 0.1);
+    }
+
+    .feature-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      background: rgba(0, 229, 255, 0.1);
+      border: 1px solid rgba(0, 229, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      color: var(--cyan);
+    }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .feature-card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    /* Code / Commands snippet box */
+    .command-box {
+      margin-top: 14px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--cyan-glow);
+    }
+
+    /* Installation Guide */
+    .install-steps {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+      margin-bottom: 80px;
+    }
+
+    .steps-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 24px;
+      margin-top: 30px;
+    }
+
+    .step-item {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .step-number {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      color: #0B0E17;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+    }
+
+    .step-item h4 {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .step-item p {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: var(--cyan);
+      text-decoration: none;
+    }
+
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+      .steps-list {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-glow"></div>
+  <div class="ambient-glow-bottom"></div>
+
+  <!-- Navigation -->
+  <nav>
+    <a href="#" class="brand">
+      <div class="brand-emblem">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <span class="brand-name">NEXORA AI</span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#vision">Vision AI</a></li>
+      <li><a href="#smarthome">ESP32 IoT</a></li>
+      <li><a href="#install">Download & Install</a></li>
+    </ul>
+
+    <a href="nexora-ai.apk" download="nexora-ai.apk" class="btn-nav">
+      ⬇️ Download APK
+    </a>
+  </nav>
+
+  <div class="container">
+    <!-- Hero Section -->
+    <header class="hero">
+      <div class="badge">
+        <span class="badge-dot"></span>
+        POWERED BY GEMINI 3.5 FLASH • AUTO-UPDATED CI/CD BUILD
+      </div>
+
+      <h1>Your Personal Siri-Style AI & ESP32 Smart Home Companion</h1>
+
+      <p class="hero-subtitle">
+        Nexora AI is a next-generation Android personal assistant with fluent Hinglish, Urdu, and English voice intelligence, multimodal visual reasoning, and ESP32 hardware automation.
+      </p>
+
+      <div class="cta-group">
+        <a href="nexora-ai.apk" download="nexora-ai.apk" class="btn-primary" id="mainDownloadBtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          Direct Download Android APK (22 MB)
+        </a>
+        <a href="#features" class="btn-secondary">
+          Explore Features
+        </a>
+      </div>
+
+      <!-- Live Mockup Container -->
+      <div class="mockup-container">
+        <div class="phone-frame">
+          <div class="phone-header">
+            <span class="status-badge">● ESP32 SMART HOME LINKED</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted); font-family: monospace;">NEXORA v1.0.0</span>
+          </div>
+
+          <div class="orb-preview">
+            <div class="glowing-orb" title="Pulsating Gemini AI Neural Orb"></div>
+            <div class="caption">"Hey Seeru" Active & Listening...</div>
+            <div class="waveform-bars">
+              <div class="bar"></div>
+              <div class="bar"></div>
+              <div class="bar"></div>
+              <div class="bar"></div>
+              <div class="bar"></div>
+              <div class="bar"></div>
+            </div>
+          </div>
+
+          <div class="dialogue-card">
+            <div class="dialogue-item">
+              <div class="avatar-icon user-avatar">👤</div>
+              <div class="dialogue-text">
+                <h4>You said</h4>
+                <p>"Kamre ki light on karo aur aaj ka morning briefing do"</p>
+              </div>
+            </div>
+            <div class="dialogue-item">
+              <div class="avatar-icon ai-avatar">⚡</div>
+              <div class="dialogue-text">
+                <h4 style="color: var(--cyan);">NEXORA AI</h4>
+                <p style="color: var(--cyan-glow);">"Light on kar di gayi hai! Subah Bakhair, aaj ka din naye iradon ka hai. Have an awesome day ahead!"</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Features Section -->
+    <section id="features" style="padding-top: 40px;">
+      <div class="section-title">
+        <h2>Intelligent Features at a Glance</h2>
+        <p>Engineered with zero latency, native Android hardware integrations, and real-time offline fallbacks.</p>
+      </div>
+
+      <div class="features-grid">
+        <!-- Feature 1 -->
+        <div class="feature-card">
+          <div class="feature-icon">🎙️</div>
+          <h3>Siri-Style Hands-Free Voice</h3>
+          <p>Wake up the assistant hands-free with <strong>"Hey Seeru"</strong> or <strong>"Hey Nexora"</strong>. Runs smoothly with Android Foreground Service & RMS audio waveform visualizers.</p>
+          <div class="command-box">"Ali ko call lagao"</div>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="feature-card" id="vision">
+          <div class="feature-icon">📸</div>
+          <h3>Gemini 3.5 Flash Vision AI</h3>
+          <p>Pick or photograph any object, document, math problem, or handwriting. Gemini multimodal neural reasoning explains, translates, or transcribes text in seconds.</p>
+          <div class="command-box">"Ye tasveer analyze karo"</div>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="feature-card" id="smarthome">
+          <div class="feature-icon">🏠</div>
+          <h3>ESP32 Smart Home Automation</h3>
+          <p>Control GPIO relay pins, smart lights, fans, and query DHT11/22 room temperature sensors via high-speed local Wi-Fi REST endpoints. No cloud delay.</p>
+          <div class="command-box">"Bedroom light band karo"</div>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="feature-card">
+          <div class="feature-icon">✍️</div>
+          <h3>Smart SMS & Message Crafter</h3>
+          <p>Generate polite, professional, or apologetic messages in natural Hinglish or English with a 1-tap <strong>"Send as SMS"</strong> launcher that directly opens your messaging app.</p>
+          <div class="command-box">"Traffic me late hone ka message likho"</div>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="feature-card">
+          <div class="feature-icon">🌅</div>
+          <h3>Smart Daily Briefing</h3>
+          <p>Start each day with an uplifting greeting, positive wisdom, and productivity encouragement spoken aloud through high-quality Text-to-Speech.</p>
+          <div class="command-box">"Aaj ka briefing sunao"</div>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Trilingual Real-Time Translator</h3>
+          <p>Instant conversational translation between <strong>English</strong>, <strong>Hindi</strong>, and <strong>Urdu</strong> with pronunciation audio playback.</p>
+          <div class="command-box">"Translate 'I am reaching soon' to Urdu"</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Installation Steps -->
+    <section id="install" class="install-steps">
+      <div class="section-title" style="margin-bottom: 20px;">
+        <h2>How to Install the Android App</h2>
+        <p>Nexora AI runs as a native Android application (.apk) on any device running Android 7.0 (Nougat) or higher.</p>
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <h4>Get the APK File</h4>
+          <p>Download the latest <code>.apk</code> from your GitHub repository under the <strong>Actions</strong> tab (Artifacts) or from AI Studio's <strong>Export</strong> menu.</p>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <h4>Allow Installation</h4>
+          <p>Open the downloaded file on your Android smartphone. If prompted, toggle "Allow from this source" to install unknown apps.</p>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <h4>Grant Permissions</h4>
+          <p>Open Nexora AI and grant <strong>Microphone</strong> permission for voice recognition and <strong>Notifications</strong> for hands-free wake word detection.</p>
+        </div>
+
+        <div class="step-item">
+          <div class="step-number">4</div>
+          <h4>Ready to Speak!</h4>
+          <p>Tap the glowing cybernetic orb or say <strong>"Hey Seeru"</strong> to start giving voice commands in Hinglish or English!</p>
+        </div>
+      </div>
+
+      <div style="text-align: center; margin-top: 40px; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+        <a href="nexora-ai.apk" download="nexora-ai.apk" class="btn-primary" style="font-size: 1.05rem;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          ⬇️ Direct Download Nexora APK (Auto-Updated)
+        </a>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Compatible with Android 7.0+ (ARM64 & x86_64)</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>Nexora AI • Built with Kotlin, Jetpack Compose, Material 3 & Gemini 3.5 Flash.</p>
+    <p style="margin-top: 8px;">Automated GitHub Actions CI/CD Pipeline Configured.</p>
+  </footer>
+</body>
+</html>
