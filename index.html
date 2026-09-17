@@ -586,7 +586,9 @@
       <li><a href="#install">Download & Install</a></li>
     </ul>
 
-    <a href="#install" class="btn-nav">Download APK</a>
+    <a href="nexora-ai.apk" download="nexora-ai.apk" class="btn-nav">
+      ⬇️ Download APK
+    </a>
   </nav>
 
   <div class="container">
@@ -594,7 +596,7 @@
     <header class="hero">
       <div class="badge">
         <span class="badge-dot"></span>
-        POWERED BY GEMINI 3.5 FLASH • KOTLIN & JETPACK COMPOSE
+        POWERED BY GEMINI 3.5 FLASH • AUTO-UPDATED CI/CD BUILD
       </div>
 
       <h1>Your Personal Siri-Style AI & ESP32 Smart Home Companion</h1>
@@ -604,9 +606,9 @@
       </p>
 
       <div class="cta-group">
-        <a href="#install" class="btn-primary">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
-          Download Android APK
+        <a href="nexora-ai.apk" download="nexora-ai.apk" class="btn-primary" id="mainDownloadBtn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          Direct Download Android APK (22 MB)
         </a>
         <a href="#features" class="btn-secondary">
           Explore Features
@@ -745,10 +747,12 @@
         </div>
       </div>
 
-      <div style="text-align: center; margin-top: 40px;">
-        <button onclick="alert('To get the APK: Go to GitHub > Actions tab > Click latest build > Download Artifact: Nexora-AI-Assistant-APK!')" class="btn-primary" style="font-size: 1rem;">
-          ⬇️ Download Latest APK Guide
-        </button>
+      <div style="text-align: center; margin-top: 40px; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+        <a href="nexora-ai.apk" download="nexora-ai.apk" class="btn-primary" style="font-size: 1.05rem;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          ⬇️ Direct Download Nexora APK (Auto-Updated)
+        </a>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Compatible with Android 7.0+ (ARM64 & x86_64)</span>
       </div>
     </section>
   </div>
