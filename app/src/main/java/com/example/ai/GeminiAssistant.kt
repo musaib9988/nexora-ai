@@ -20,9 +20,12 @@ sealed class AssistantOutcome {
     data class SensorQuery(val room: String) : AssistantOutcome()
     data class CallAction(val contactName: String) : AssistantOutcome()
     data class MessageAction(val recipient: String, val messageBody: String) : AssistantOutcome()
+    data class WhatsAppAction(val contactOrPhone: String, val messageBody: String) : AssistantOutcome()
     data class CameraAction(val mode: String = "OPEN") : AssistantOutcome()
     data class MusicAction(val command: String, val songQuery: String = "") : AssistantOutcome()
-    data class AlarmAction(val command: String = "SHOW") : AssistantOutcome()
+    data class AlarmAction(val command: String = "SET", val hour: Int = -1, val minute: Int = -1, val label: String = "Nexora Alarm") : AssistantOutcome()
+    data class WeatherAction(val city: String = "") : AssistantOutcome()
+    data class YouTubeAction(val query: String = "") : AssistantOutcome()
     data class AppAction(val appName: String) : AssistantOutcome()
     data class RoutineAction(val routineName: String) : AssistantOutcome()
     data class TimeDateAction(val format: String = "NOW") : AssistantOutcome()
@@ -180,6 +183,53 @@ class GeminiAssistant {
                                 put("description", "Opens alarm clock.")
                                 put("parameters", JSONObject().apply { put("type", "OBJECT") })
                             })
+                            // Set Alarm
+                            put(JSONObject().apply {
+                                put("name", "set_alarm")
+                                put("description", "Sets a phone alarm with optional hour and minute.")
+                                put("parameters", JSONObject().apply {
+                                    put("type", "OBJECT")
+                                    put("properties", JSONObject().apply {
+                                        put("hour", JSONObject().apply { put("type", "INTEGER"); put("description", "Hour (0-23)") })
+                                        put("minute", JSONObject().apply { put("type", "INTEGER"); put("description", "Minute (0-59)") })
+                                        put("label", JSONObject().apply { put("type", "STRING") })
+                                    })
+                                })
+                            })
+                            // Open YouTube
+                            put(JSONObject().apply {
+                                put("name", "open_youtube")
+                                put("description", "Opens YouTube app or search query.")
+                                put("parameters", JSONObject().apply {
+                                    put("type", "OBJECT")
+                                    put("properties", JSONObject().apply {
+                                        put("query", JSONObject().apply { put("type", "STRING") })
+                                    })
+                                })
+                            })
+                            // Send WhatsApp Message
+                            put(JSONObject().apply {
+                                put("name", "send_whatsapp")
+                                put("description", "Sends or composes a WhatsApp message.")
+                                put("parameters", JSONObject().apply {
+                                    put("type", "OBJECT")
+                                    put("properties", JSONObject().apply {
+                                        put("contact_or_phone", JSONObject().apply { put("type", "STRING") })
+                                        put("message_body", JSONObject().apply { put("type", "STRING") })
+                                    })
+                                })
+                            })
+                            // Weather
+                            put(JSONObject().apply {
+                                put("name", "get_weather")
+                                put("description", "Shows weather forecast for a city or current location.")
+                                put("parameters", JSONObject().apply {
+                                    put("type", "OBJECT")
+                                    put("properties", JSONObject().apply {
+                                        put("city", JSONObject().apply { put("type", "STRING") })
+                                    })
+                                })
+                            })
                             // Open App
                             put(JSONObject().apply {
                                 put("name", "open_app")
@@ -296,7 +346,23 @@ class GeminiAssistant {
                             "control_music" -> AssistantOutcome.MusicAction(
                                 command = args.optString("command", "TOGGLE").uppercase()
                             )
-                            "show_alarms" -> AssistantOutcome.AlarmAction()
+                            "show_alarms" -> AssistantOutcome.AlarmAction(command = "SHOW")
+                            "set_alarm" -> AssistantOutcome.AlarmAction(
+                                command = "SET",
+                                hour = args.optInt("hour", -1),
+                                minute = args.optInt("minute", -1),
+                                label = args.optString("label", "Nexora Alarm")
+                            )
+                            "open_youtube" -> AssistantOutcome.YouTubeAction(
+                                query = args.optString("query", "")
+                            )
+                            "send_whatsapp" -> AssistantOutcome.WhatsAppAction(
+                                contactOrPhone = args.optString("contact_or_phone", ""),
+                                messageBody = args.optString("message_body", "")
+                            )
+                            "get_weather" -> AssistantOutcome.WeatherAction(
+                                city = args.optString("city", "")
+                            )
                             "open_app" -> AssistantOutcome.AppAction(
                                 appName = args.optString("app_name", "App")
                             )
@@ -344,6 +410,34 @@ class GeminiAssistant {
         }
 
         return when {
+            // Wake word interactive greeting (Siri style immediate response)
+            lower == "hey" || lower == "hey nexora" || lower == "hey seeru" || lower == "hey nexora ai" ->
+                AssistantOutcome.SpokenResponse("Ji! Mai sun rahi hu, bataiye kya madad karu?")
+
+            // YouTube (Voice trigger: "open youtube", "youtube chalao", "search X on youtube")
+            lower.contains("youtube") -> {
+                val query = extractYouTubeQuery(lower)
+                AssistantOutcome.YouTubeAction(query = query)
+            }
+
+            // WhatsApp (Voice trigger: "send whatsapp message", "whatsapp karo", "whatsapp pe message bhejo")
+            lower.contains("whatsapp") -> {
+                val (rec, body) = extractWhatsAppDetails(lower)
+                AssistantOutcome.WhatsAppAction(contactOrPhone = rec, messageBody = body)
+            }
+
+            // Alarms (Voice trigger: "set alarm", "alarm lagao", "7 baje ka alarm lagao", "alarms dikhao")
+            lower.contains("alarm") || lower.contains("alarms") -> {
+                val (h, m) = extractAlarmTime(lower)
+                AssistantOutcome.AlarmAction(command = "SET", hour = h, minute = m)
+            }
+
+            // Weather (Voice trigger: "show weather", "mausam kaisa hai", "weather kya hai", "aaj ka mausam")
+            lower.contains("weather") || lower.contains("mausam") || lower.contains("tapman") -> {
+                val city = extractWeatherCity(lower)
+                AssistantOutcome.WeatherAction(city = city)
+            }
+
             // Routines (only when IoT is enabled)
             isIotModeEnabled && (lower.contains("good morning") || lower.contains("subah bakhair") || lower.contains("suprabhat")) ->
                 AssistantOutcome.RoutineAction("Good Morning")
@@ -369,7 +463,7 @@ class GeminiAssistant {
                 AssistantOutcome.DeviceAction(deviceName = "fan", action = "OFF")
 
             // Sensor Readings (only when IoT is enabled)
-            isIotModeEnabled && (lower.contains("temperature") || lower.contains("temp") || lower.contains("tapman") || lower.contains("humidity") || lower.contains("sensor status")) ->
+            isIotModeEnabled && (lower.contains("temperature") || lower.contains("temp") || lower.contains("humidity") || lower.contains("sensor status")) ->
                 AssistantOutcome.SensorQuery(room = if (lower.contains("kitchen")) "kitchen" else "bedroom")
 
             // Phone Calls
@@ -379,6 +473,7 @@ class GeminiAssistant {
                     .replace("hey nexora", "")
                     .replace("nexora", "")
                     .replace("seeru", "")
+                    .replace("hey", "")
                     .replace("ko phone lagao", "")
                     .replace("ko call lagao", "")
                     .replace("ko call karo", "")
@@ -411,15 +506,14 @@ class GeminiAssistant {
                 AssistantOutcome.MusicAction(command = cmd, songQuery = songQuery)
             }
 
-            // Alarms
-            lower.contains("alarm") || lower.contains("alarms") ->
-                AssistantOutcome.AlarmAction()
-
             // Open Apps
             lower.startsWith("open ") || lower.contains("kholo") -> {
                 val app = lower
                     .replace("hey seeru", "")
+                    .replace("hey nexora", "")
+                    .replace("nexora", "")
                     .replace("seeru", "")
+                    .replace("hey", "")
                     .replace("open ", "")
                     .replace("kholo", "")
                     .trim()
@@ -430,9 +524,12 @@ class GeminiAssistant {
             lower.contains("time") || lower.contains("samay") || lower.contains("waqt") || lower.contains("date") ->
                 AssistantOutcome.TimeDateAction()
 
-            // Greetings & Chat
+            // Identity & Greetings
+            lower.contains("kaun ho") || lower.contains("who are you") || lower.contains("naam kya") ->
+                AssistantOutcome.SpokenResponse("Mai Nexora hu, aapka smart personal voice assistant. Mai YouTube open kar sakti hu, WhatsApp message bhej sakti hu, alarms set kar sakti hu, weather bata sakti hu aur calls mila sakti hu.")
+
             lower.contains("hello") || lower.contains("hi") || lower.contains("namaste") || lower.contains("salam") ->
-                AssistantOutcome.SpokenResponse("Namaste! Mai Seeru hu. Mai aapki kya madad kar sakti hu?")
+                AssistantOutcome.SpokenResponse("Namaste! Mai Nexora hu. Mai aapki kya madad kar sakti hu?")
 
             lower.contains("kaise ho") || lower.contains("how are you") ->
                 AssistantOutcome.SpokenResponse("Mai bilkul theek hu! Aap batayein, mai aapki kya madad karu?")
@@ -440,12 +537,117 @@ class GeminiAssistant {
             else ->
                 AssistantOutcome.SpokenResponse(
                     if (isIotModeEnabled) {
-                        "Aap mujhe phone call, message, camera, music, light on/off ya temperature ke commands de sakte hain."
+                        "Aap mujhe phone call, WhatsApp, YouTube, alarm, weather ya light on/off ke commands de sakte hain."
                     } else {
-                        "Mai aapka personal voice assistant hu. Aap mujhe call lagane, message bhejne, camera kholne, music chalane ya sawal puchne ke commands de sakte hain."
+                        "Mai aapka voice assistant hu. Aap mujhe 'Open YouTube', 'Send WhatsApp message', 'Set alarm', 'Show weather' ya call lagane ke commands de sakte hain."
                     }
                 )
         }
+    }
+
+    private fun extractYouTubeQuery(text: String): String {
+        return text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .replace("open youtube and search", "")
+            .replace("open youtube", "")
+            .replace("youtube open karo", "")
+            .replace("youtube chalao", "")
+            .replace("youtube par search karo", "")
+            .replace("youtube pe search karo", "")
+            .replace("youtube pe chalao", "")
+            .replace("youtube par chalao", "")
+            .replace("search on youtube", "")
+            .replace("search youtube for", "")
+            .replace("youtube search", "")
+            .replace("youtube", "")
+            .trim()
+    }
+
+    private fun extractWhatsAppDetails(text: String): Pair<String, String> {
+        val clean = text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .trim()
+
+        val koPattern = Regex("""^([a-zA-Z0-9_\u0600-\u06FF\u0900-\u097F]+)\s+ko\s+whatsapp(?:\s+message|\s+msg)?\s*(?:bhejo|karo|send\s*karo)?\s*(.*)$""", RegexOption.IGNORE_CASE)
+        val koMatch = koPattern.find(clean)
+        if (koMatch != null) {
+            val rec = koMatch.groupValues[1].trim()
+            val body = koMatch.groupValues[2].trim()
+            return Pair(rec, body.ifEmpty { "Hello!" })
+        }
+
+        val enPattern = Regex("""^(?:send\s+)?whatsapp(?:\s+message)?\s+to\s+([a-zA-Z0-9_]+)(?:\s+saying|\s+that)?\s*(.*)$""", RegexOption.IGNORE_CASE)
+        val enMatch = enPattern.find(clean)
+        if (enMatch != null) {
+            val rec = enMatch.groupValues[1].trim()
+            val body = enMatch.groupValues[2].trim()
+            return Pair(rec, body.ifEmpty { "Hello!" })
+        }
+
+        val genericBody = clean
+            .replace("send whatsapp message", "")
+            .replace("whatsapp message bhejo", "")
+            .replace("whatsapp message karo", "")
+            .replace("whatsapp message", "")
+            .replace("whatsapp karo", "")
+            .replace("whatsapp", "")
+            .trim()
+
+        return Pair("", genericBody.ifEmpty { "Hello from Nexora AI!" })
+    }
+
+    private fun extractAlarmTime(text: String): Pair<Int, Int> {
+        val clean = text.lowercase()
+        val isPm = clean.contains("pm") || clean.contains("shaam") || clean.contains("raat")
+
+        val colonMatch = Regex("""(\d{1,2}):(\d{2})""").find(clean)
+        if (colonMatch != null) {
+            var h = colonMatch.groupValues[1].toIntOrNull() ?: -1
+            val m = colonMatch.groupValues[2].toIntOrNull() ?: 0
+            if (isPm && h in 1..11) h += 12
+            return Pair(h, m)
+        }
+
+        val numMatch = Regex("""(\d{1,2})\s*(?:am|pm|baje|\s*o'clock)?""").find(clean)
+        if (numMatch != null) {
+            var h = numMatch.groupValues[1].toIntOrNull() ?: -1
+            if (h in 1..24) {
+                if (isPm && h in 1..11) h += 12
+                return Pair(h, 0)
+            }
+        }
+
+        return Pair(-1, -1)
+    }
+
+    private fun extractWeatherCity(text: String): String {
+        val clean = text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .replace("show weather in", "")
+            .replace("show weather for", "")
+            .replace("show weather", "")
+            .replace("weather of", "")
+            .replace("weather in", "")
+            .replace("weather", "")
+            .replace("ka mausam kaisa hai", "")
+            .replace("ka mausam", "")
+            .replace("mausam kaisa hai", "")
+            .replace("mausam", "")
+            .replace("tapman", "")
+            .trim()
+        return if (clean.length in 2..30) clean else "Delhi"
     }
 
     private fun extractMessageDetails(text: String): Pair<String, String> {

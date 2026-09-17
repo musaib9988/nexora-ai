@@ -463,19 +463,117 @@ fun SeeruMainContent(
                 }
 
                 is AssistantOutcome.AlarmAction -> {
-                    phoneActionHandler.openAlarms()
-                    val reply = "Alarms open kar diya gaya hai."
-                    speechManager.speak(reply)
-                    lastSeeruResponse = reply
+                    if (outcome.hour >= 0) {
+                        val reply = "Theek hai, ${outcome.hour}:${String.format("%02d", outcome.minute.coerceAtLeast(0))} ka alarm set kar diya hai."
+                        speechManager.speak(reply)
+                        lastSeeruResponse = reply
+                        phoneActionHandler.setAlarm(outcome.hour, outcome.minute.coerceAtLeast(0), outcome.label)
+                    } else {
+                        val reply = "Alarms open kar diya gaya hai."
+                        speechManager.speak(reply)
+                        lastSeeruResponse = reply
+                        phoneActionHandler.openAlarms()
+                    }
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = lastSeeruResponse,
+                            actionType = "Alarm"
+                        )
+                    )
                     orbState = OrbState.IDLE
                 }
 
-                is AssistantOutcome.AppAction -> {
-                    val opened = phoneActionHandler.openApp(outcome.appName)
-                    val reply = if (opened) {
-                        "${outcome.appName} khola ja raha hai."
+                is AssistantOutcome.YouTubeAction -> {
+                    val reply = if (outcome.query.isNotBlank()) {
+                        "YouTube par '${outcome.query}' search kiya ja raha hai."
                     } else {
-                        "Mujhe ${outcome.appName} app nahi mila."
+                        "YouTube open kiya ja raha hai."
+                    }
+                    speechManager.speak(reply)
+                    lastSeeruResponse = reply
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = reply,
+                            actionType = "YouTube"
+                        )
+                    )
+                    val opened = phoneActionHandler.openYouTube(outcome.query)
+                    if (!opened) {
+                        Toast.makeText(context, "YouTube open nahi ho saka", Toast.LENGTH_SHORT).show()
+                    }
+                    orbState = OrbState.IDLE
+                }
+
+                is AssistantOutcome.WhatsAppAction -> {
+                    val alias = if (outcome.contactOrPhone.isNotBlank()) dao.findContactByAlias(outcome.contactOrPhone.lowercase()) else null
+                    val targetPhone = alias?.phoneNumber ?: outcome.contactOrPhone
+                    val displayName = alias?.actualName ?: outcome.contactOrPhone.ifEmpty { "WhatsApp" }
+
+                    val reply = if (displayName.isNotBlank() && displayName != "WhatsApp") {
+                        "$displayName ko WhatsApp par message bheja ja raha hai."
+                    } else {
+                        "WhatsApp par message bheja ja raha hai."
+                    }
+                    speechManager.speak(reply)
+                    lastSeeruResponse = reply
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = reply,
+                            actionType = "WhatsApp: $displayName"
+                        )
+                    )
+                    val opened = phoneActionHandler.sendWhatsAppMessage(targetPhone, outcome.messageBody)
+                    if (!opened) {
+                        Toast.makeText(context, "WhatsApp open nahi mila", Toast.LENGTH_SHORT).show()
+                    }
+                    orbState = OrbState.IDLE
+                }
+
+                is AssistantOutcome.WeatherAction -> {
+                    val weather = phoneActionHandler.getWeatherReport(outcome.city)
+                    val report = weather.summary
+                    speechManager.speak(report)
+                    lastSeeruResponse = report
+                    dao.insertConversation(
+                        ConversationEntity(
+                            role = "ASSISTANT",
+                            text = report,
+                            actionType = "Weather"
+                        )
+                    )
+                    orbState = OrbState.SPEAKING
+                }
+
+                is AssistantOutcome.AppAction -> {
+                    val lowerApp = outcome.appName.lowercase()
+                    val reply: String
+                    when {
+                        lowerApp.contains("youtube") -> {
+                            reply = "YouTube khola ja raha hai."
+                            phoneActionHandler.openYouTube("")
+                        }
+                        lowerApp.contains("whatsapp") -> {
+                            reply = "WhatsApp khola ja raha hai."
+                            phoneActionHandler.sendWhatsAppMessage("", "")
+                        }
+                        lowerApp.contains("alarm") || lowerApp.contains("clock") -> {
+                            reply = "Alarm clock khola ja raha hai."
+                            phoneActionHandler.openAlarms()
+                        }
+                        lowerApp.contains("weather") || lowerApp.contains("mausam") -> {
+                            reply = phoneActionHandler.getWeatherReport("").summary
+                        }
+                        else -> {
+                            val opened = phoneActionHandler.openApp(outcome.appName)
+                            reply = if (opened) {
+                                "${outcome.appName} khola ja raha hai."
+                            } else {
+                                "Mujhe ${outcome.appName} app nahi mila."
+                            }
+                        }
                     }
                     speechManager.speak(reply)
                     lastSeeruResponse = reply
@@ -761,7 +859,7 @@ fun SeeruMainContent(
                         if (enable) {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                 SeeruForegroundService.startService(context)
-                                Toast.makeText(context, "Hey Seeru background listening started", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Nexora 'Hey' background listening active", Toast.LENGTH_SHORT).show()
                             } else {
                                 permissionsLauncher.launch(
                                     arrayOf(
@@ -796,6 +894,19 @@ fun SeeruMainContent(
                     contactAliases = contactAliases,
                     onAddContactAlias = { alias ->
                         coroutineScope.launch { dao.insertContactAlias(alias) }
+                    },
+                    onUpdateContactAlias = { oldAlias, newAlias ->
+                        coroutineScope.launch {
+                            dao.deleteContactAlias(oldAlias)
+                            dao.insertContactAlias(newAlias)
+                            Toast.makeText(context, "Contact updated: ${newAlias.actualName} (${newAlias.phoneNumber})", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onDeleteContactAlias = { alias ->
+                        coroutineScope.launch {
+                            dao.deleteContactAlias(alias)
+                            Toast.makeText(context, "Alias '${alias.alias}' deleted", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             }

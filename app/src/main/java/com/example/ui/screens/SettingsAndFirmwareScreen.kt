@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -41,14 +42,21 @@ fun SettingsAndFirmwareScreen(
     onToggleIotMode: (Boolean) -> Unit = {},
     onOpenSmartHomeDashboard: (() -> Unit)? = null,
     contactAliases: List<ContactAliasEntity>,
-    onAddContactAlias: (ContactAliasEntity) -> Unit
+    onAddContactAlias: (ContactAliasEntity) -> Unit,
+    onUpdateContactAlias: (ContactAliasEntity, ContactAliasEntity) -> Unit = { _, _ -> },
+    onDeleteContactAlias: (ContactAliasEntity) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var showAddContactDialog by remember { mutableStateOf(false) }
+    var editingContact by remember { mutableStateOf<ContactAliasEntity?>(null) }
     var aliasInput by remember { mutableStateOf("") }
     var nameInput by remember { mutableStateOf("") }
     var phoneInput by remember { mutableStateOf("") }
+
+    var editAliasInput by remember { mutableStateOf("") }
+    var editNameInput by remember { mutableStateOf("") }
+    var editPhoneInput by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -96,13 +104,13 @@ fun SettingsAndFirmwareScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Hands-Free Foreground Service",
+                            text = "Hands-Free Background Service",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                         Text(
-                            text = "Listen for \"Hey Seeru\" even when app is minimized",
+                            text = "Wake Word: \"Hey\" (Works even when app is minimized or screen off)",
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
@@ -240,27 +248,75 @@ fun SettingsAndFirmwareScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 if (contactAliases.isEmpty()) {
-                    Text(text = "No contact aliases defined.", color = TextMuted, fontSize = 13.sp)
+                    Text(text = "No contact aliases defined. Tap '+ Add Alias' above.", color = TextMuted, fontSize = 13.sp)
                 } else {
                     contactAliases.forEachIndexed { index, alias ->
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    editingContact = alias
+                                    editAliasInput = alias.alias
+                                    editNameInput = alias.actualName
+                                    editPhoneInput = alias.phoneNumber
+                                }
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "\"${alias.alias}\" -> ${alias.actualName}",
-                                fontSize = 13.sp,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = alias.phoneNumber,
-                                fontSize = 12.sp,
-                                color = CyanPrimary
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "\"${alias.alias}\"",
+                                        fontSize = 14.sp,
+                                        color = CyanPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = " -> ${alias.actualName}",
+                                        fontSize = 13.sp,
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Text(
+                                    text = alias.phoneNumber,
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        editingContact = alias
+                                        editAliasInput = alias.alias
+                                        editNameInput = alias.actualName
+                                        editPhoneInput = alias.phoneNumber
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Contact",
+                                        tint = CyanPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onDeleteContactAlias(alias) },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete Contact",
+                                        tint = ErrorRed,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                         if (index < contactAliases.size - 1) {
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = DarkCardBorder)
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = DarkCardBorder)
                         }
                     }
                 }
@@ -566,6 +622,54 @@ fun SettingsAndFirmwareScreen(
             },
             dismissButton = {
                 OutlinedButton(onClick = { showAddContactDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (editingContact != null) {
+        AlertDialog(
+            onDismissRequest = { editingContact = null },
+            title = { Text("Edit Contact Number & Alias") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editAliasInput,
+                        onValueChange = { editAliasInput = it },
+                        label = { Text("Alias (e.g. ammi, ali, boss)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editNameInput,
+                        onValueChange = { editNameInput = it },
+                        label = { Text("Full Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editPhoneInput,
+                        onValueChange = { editPhoneInput = it },
+                        label = { Text("Phone Number") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val current = editingContact ?: return@Button
+                    if (editAliasInput.isNotBlank() && editPhoneInput.isNotBlank()) {
+                        val updated = ContactAliasEntity(
+                            alias = editAliasInput.trim().lowercase(),
+                            actualName = editNameInput.trim().ifEmpty { editAliasInput.trim() },
+                            phoneNumber = editPhoneInput.trim()
+                        )
+                        onUpdateContactAlias(current, updated)
+                        editingContact = null
+                    }
+                }) {
+                    Text("Update")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { editingContact = null }) { Text("Cancel") }
             }
         )
     }

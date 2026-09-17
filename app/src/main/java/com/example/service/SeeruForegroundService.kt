@@ -13,6 +13,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
@@ -24,6 +25,7 @@ class SeeruForegroundService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
     private var isListening = false
     private var audioRecord: AudioRecord? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     companion object {
         const val CHANNEL_ID = "seeru_assistant_channel"
@@ -76,21 +78,21 @@ class SeeruForegroundService : Service() {
             // Ongoing status channel
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Seeru AI Hands-Free Service",
+                "Nexora Background Assistant",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Keeps SEERU AI wake word listener active in the background"
+                description = "Listens for 'Hey' wake word in the background"
                 setShowBadge(false)
             }
             manager?.createNotificationChannel(channel)
 
-            // High priority alert channel for when "Hey Seeru" is heard
+            // High priority alert channel for when "Hey" is heard
             val alertChannel = NotificationChannel(
                 ALERT_CHANNEL_ID,
-                "Seeru AI Wake Word Alerts",
+                "Nexora 'Hey' Wake Word Alerts",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Alerts when 'Hey Seeru' is detected in the background"
+                description = "Alerts when 'Hey' is detected in the background"
                 enableVibration(true)
             }
             manager?.createNotificationChannel(alertChannel)
@@ -98,6 +100,19 @@ class SeeruForegroundService : Service() {
     }
 
     private fun startForegroundListening() {
+        // Hold Partial WakeLock to prevent CPU sleeping in background
+        if (wakeLock == null) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Nexora::WakeWordListener")?.apply {
+                setReferenceCounted(false)
+                try {
+                    acquire(24 * 60 * 60 * 1000L)
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
+        }
+
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("EXTRA_AUTO_LISTEN", true)
@@ -110,8 +125,8 @@ class SeeruForegroundService : Service() {
         )
 
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Seeru AI Active")
-            .setContentText("Hands-free active. Say 'Hey Seeru' or tap to speak.")
+            .setContentTitle("Nexora AI Active")
+            .setContentText("Hands-free active. Say 'Hey' or tap to speak.")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .addAction(
@@ -150,6 +165,14 @@ class SeeruForegroundService : Service() {
             // Ignore
         }
         audioRecord = null
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+        wakeLock = null
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
@@ -260,7 +283,7 @@ class SeeruForegroundService : Service() {
         )
 
         val alertNotification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-            .setContentTitle("🎙️ 'Hey Seeru' Detected!")
+            .setContentTitle("🎙️ 'Hey' Detected!")
             .setContentText("Listening for your command... Tap to speak.")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(alertPendingIntent)

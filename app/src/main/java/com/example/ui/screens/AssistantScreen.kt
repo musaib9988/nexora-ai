@@ -102,7 +102,7 @@ fun AssistantScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (isHandsFreeActive) "Hey Seeru Active" else "Wake Word Off",
+                            text = if (isHandsFreeActive) "'Hey' Wake Word Active" else "Wake Word Off",
                             fontSize = 11.sp,
                             color = if (isHandsFreeActive) CyanPrimary else TextMuted,
                             fontWeight = FontWeight.SemiBold
@@ -134,7 +134,7 @@ fun AssistantScreen(
                     OrbState.LISTENING -> "Listening to your voice..."
                     OrbState.THINKING -> "Thinking with Gemini AI..."
                     OrbState.SPEAKING -> "Nexora speaking..."
-                    OrbState.IDLE -> "Tap orb or say \"Hey Nexora\""
+                    OrbState.IDLE -> "Tap orb or say \"Hey\""
                 },
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Medium,
@@ -372,16 +372,16 @@ fun AssistantScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         QuickActionChip(
-                            icon = Icons.Default.Phone,
-                            label = "Call Ammi",
+                            icon = Icons.Default.SmartDisplay,
+                            label = "Open YouTube",
                             modifier = Modifier.weight(1f),
-                            onClick = { onQuickActionClick("Ammi ko call lagao") }
+                            onClick = { onQuickActionClick("open youtube") }
                         )
                         QuickActionChip(
-                            icon = Icons.Default.PhotoCamera,
-                            label = "Camera kholo",
+                            icon = Icons.Default.Chat,
+                            label = "WhatsApp Message",
                             modifier = Modifier.weight(1f),
-                            onClick = { onQuickActionClick("camera kholo") }
+                            onClick = { onQuickActionClick("send whatsapp message") }
                         )
                     }
 
@@ -390,36 +390,36 @@ fun AssistantScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         QuickActionChip(
+                            icon = Icons.Default.Alarm,
+                            label = "Alarm Lagao (7 AM)",
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickActionClick("subah 7 baje ka alarm set karo") }
+                        )
+                        QuickActionChip(
+                            icon = Icons.Default.WbSunny,
+                            label = "Show Weather ☁️",
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickActionClick("show weather") }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QuickActionChip(
+                            icon = Icons.Default.Phone,
+                            label = "Call Ammi",
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickActionClick("Ammi ko call lagao") }
+                        )
+                        QuickActionChip(
                             icon = Icons.Default.PlayArrow,
                             label = "Gaana bajao",
                             modifier = Modifier.weight(1f),
                             onClick = { onQuickActionClick("gaana bajao") }
                         )
-                        QuickActionChip(
-                            icon = Icons.Default.Alarm,
-                            label = "Alarms dikhao",
-                            modifier = Modifier.weight(1f),
-                            onClick = { onQuickActionClick("alarm dikhao") }
-                        )
                     }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QuickActionChip(
-                        icon = Icons.Default.SmartDisplay,
-                        label = "Open YouTube",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onQuickActionClick("open youtube") }
-                    )
-                    QuickActionChip(
-                        icon = Icons.Default.Schedule,
-                        label = "Kya time hua hai?",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onQuickActionClick("kya time hua hai?") }
-                    )
                 }
             }
 
