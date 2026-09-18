@@ -40,6 +40,12 @@ fun AssistantScreen(
     lastSeeruResponse: String,
     isHandsFreeActive: Boolean,
     isIotModeEnabled: Boolean = false,
+    pendingTodos: List<com.example.data.local.NoteEntity> = emptyList(),
+    recentNotes: List<com.example.data.local.NoteEntity> = emptyList(),
+    onToggleTodo: (Long, Boolean) -> Unit = { _, _ -> },
+    onOpenNotesTab: () -> Unit = {},
+    isBatteryOptimizationIgnored: Boolean = false,
+    onRequestBatteryOptimization: () -> Unit = {},
     onMicClick: () -> Unit,
     onQuickActionClick: (String) -> Unit,
     onOpenAiTools: () -> Unit = {},
@@ -314,6 +320,204 @@ fun AssistantScreen(
                 }
             }
 
+            // App Close Protection Banner (Battery Optimization)
+            if (!isBatteryOptimizationIgnored) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = DarkSurfaceElevated,
+                    border = BorderStroke(1.dp, WarningAmber.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = Icons.Default.BatteryChargingFull,
+                                contentDescription = "Battery optimization",
+                                tint = WarningAmber,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Run when App is Closed",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "Allow wake-word even when app is swiped away",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                        TextButton(
+                            onClick = onRequestBatteryOptimization,
+                            colors = ButtonDefaults.textButtonColors(contentColor = CyanPrimary)
+                        ) {
+                            Text("Enable", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Quick To-Dos & Tasks Card on Home
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = DarkSurfaceElevated,
+                border = BorderStroke(1.dp, DarkCardBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = SuccessGreen,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "To-Dos (${pendingTodos.size})",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                        TextButton(
+                            onClick = onOpenNotesTab,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("View All ↗", fontSize = 11.sp, color = CyanPrimary)
+                        }
+                    }
+
+                    if (pendingTodos.isEmpty()) {
+                        Text(
+                            text = "All tasks completed! Say \"Add todo [task]\" or tap View All.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+                    } else {
+                        pendingTodos.take(3).forEach { todo ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onToggleTodo(todo.id, true) }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.RadioButtonUnchecked,
+                                    contentDescription = "Check task",
+                                    tint = CyanPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = todo.title,
+                                    fontSize = 13.sp,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Recent Notes Preview on Home
+            if (recentNotes.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = DarkSurfaceElevated,
+                    border = BorderStroke(1.dp, DarkCardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.NoteAlt,
+                                    contentDescription = null,
+                                    tint = VioletSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Recent Notes (${recentNotes.size})",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            }
+                            TextButton(
+                                onClick = onOpenNotesTab,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Notepad ↗", fontSize = 11.sp, color = CyanPrimary)
+                            }
+                        }
+
+                        recentNotes.take(2).forEach { note ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onOpenNotesTab() }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(CyanPrimary)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = note.title,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    if (note.content.isNotBlank() && note.content != note.title) {
+                                        Text(
+                                            text = note.content,
+                                            fontSize = 11.sp,
+                                            color = TextSecondary,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(18.dp))
 
             // Quick Voice Action Chips Header
@@ -367,6 +571,24 @@ fun AssistantScreen(
                         )
                     }
                 } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QuickActionChip(
+                            icon = Icons.Default.EditNote,
+                            label = "Note banao...",
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickActionClick("note banao meeting kal 10 baje hai") }
+                        )
+                        QuickActionChip(
+                            icon = Icons.Default.Checklist,
+                            label = "Add todo...",
+                            modifier = Modifier.weight(1f),
+                            onClick = { onQuickActionClick("add todo buy milk and groceries") }
+                        )
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)

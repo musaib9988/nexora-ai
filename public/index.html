@@ -696,7 +696,15 @@
           <div class="command-box">"Set alarm for 7 AM", "Alarm open karo"</div>
         </div>
 
-        <!-- Feature 5 -->
+        <!-- Feature 5: Inbuilt Notes & To-Dos App -->
+        <div class="feature-card">
+          <div class="feature-icon">📝</div>
+          <h3>Inbuilt Notes & To-Dos App</h3>
+          <p>Complete built-in notepad & task manager powered by Room database. Speak to create, edit, read, complete, or delete notes and tasks instantly without touching the screen.</p>
+          <div class="command-box">"Note banao meeting kal hai", "Add todo buy milk"</div>
+        </div>
+
+        <!-- Feature 6 -->
         <div class="feature-card">
           <div class="feature-icon">☁️</div>
           <h3>Live Weather Intelligence</h3>
@@ -704,7 +712,7 @@
           <div class="command-box">"Show weather", "Mausam kaisa hai?"</div>
         </div>
 
-        <!-- Feature 6 -->
+        <!-- Feature 7 -->
         <div class="feature-card">
           <div class="feature-icon">📱</div>
           <h3>Editable Contact Numbers</h3>
@@ -761,6 +769,95 @@
   <footer>
     <p>Nexora AI • Built with Kotlin, Jetpack Compose, Material 3 & Gemini 3.5 Flash.</p>
     <p style="margin-top: 8px;">Automated GitHub Actions CI/CD Pipeline Configured.</p>
+    <p id="ciStatusText" style="margin-top: 6px; font-size: 0.8rem; color: var(--cyan);"></p>
   </footer>
+
+  <script>
+    // Dynamic GitHub Actions Artifact & Latest Release Link Resolver
+    (function initDynamicDownloadLinks() {
+      // Priority resolution:
+      // 1. URL search params ?repo=owner/repo
+      // 2. GitHub Pages hostname detection (e.g., username.github.io/repo)
+      // 3. Fallback to repository release / direct APK build
+      const urlParams = new URLSearchParams(window.location.search);
+      let repoSlug = urlParams.get('repo') || localStorage.getItem('nexora_github_repo');
+
+      if (!repoSlug && window.location.hostname.endsWith('github.io')) {
+        const pathSegments = window.location.pathname.split('/').filter(Boolean);
+        const owner = window.location.hostname.split('.')[0];
+        const repo = pathSegments[0] || 'Nexora-AI';
+        repoSlug = `${owner}/${repo}`;
+      }
+
+      const downloadButtons = document.querySelectorAll('a[href*="nexora-ai.apk"], #mainDownloadBtn, .btn-nav');
+      const ciStatusEl = document.getElementById('ciStatusText');
+
+      async function resolveLatestArtifactOrRelease() {
+        if (!repoSlug) {
+          if (ciStatusEl) {
+            ciStatusEl.innerHTML = '⚡ Auto-updated direct APK ready. <a href="javascript:void(0)" id="setRepoLink" style="color:var(--cyan-glow);text-decoration:underline;">Link GitHub Repo</a>';
+            document.getElementById('setRepoLink')?.addEventListener('click', promptForRepo);
+          }
+          return;
+        }
+
+        try {
+          // Check GitHub Releases for latest release APK first
+          const releaseRes = await fetch(`https://api.github.com/repos/${repoSlug}/releases/latest`);
+          if (releaseRes.ok) {
+            const releaseData = await releaseRes.json();
+            const apkAsset = releaseData.assets?.find(a => a.name.endsWith('.apk'));
+            if (apkAsset && apkAsset.browser_download_url) {
+              applyDownloadUrl(apkAsset.browser_download_url, `Download Latest APK (${releaseData.tag_name || 'Latest Build'})`);
+              if (ciStatusEl) {
+                ciStatusEl.textContent = `🟢 Connected to GitHub Release: ${releaseData.name || releaseData.tag_name}`;
+              }
+              return;
+            }
+          }
+
+          // Alternatively query GitHub Actions Artifacts API
+          const artifactsRes = await fetch(`https://api.github.com/repos/${repoSlug}/actions/artifacts?per_page=5`);
+          if (artifactsRes.ok) {
+            const artData = await artifactsRes.json();
+            const latestArtifact = artData.artifacts?.[0];
+            if (latestArtifact) {
+              const runUrl = `https://github.com/${repoSlug}/actions/runs/${latestArtifact.workflow_run.id}`;
+              const artifactDownloadUrl = `https://github.com/${repoSlug}/actions/runs/${latestArtifact.workflow_run.id}/artifacts/${latestArtifact.id}`;
+              
+              applyDownloadUrl(runUrl, `Download Latest GitHub Artifact (#${latestArtifact.id})`);
+              if (ciStatusEl) {
+                ciStatusEl.innerHTML = `🟢 Latest GitHub Actions Artifact: <a href="${artifactDownloadUrl}" target="_blank" style="color:var(--cyan);text-decoration:underline;">${latestArtifact.name}</a> (Run #${latestArtifact.workflow_run.id})`;
+              }
+            }
+          }
+        } catch (e) {
+          console.log("GitHub API lookup fallback to direct local APK:", e);
+        }
+      }
+
+      function applyDownloadUrl(url, label) {
+        downloadButtons.forEach(btn => {
+          btn.href = url;
+          btn.setAttribute('target', '_blank');
+          btn.removeAttribute('download');
+          if (btn.id === 'mainDownloadBtn' && label) {
+            btn.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg> ${label}`;
+          }
+        });
+      }
+
+      function promptForRepo() {
+        const input = prompt("Enter your GitHub repository (owner/repo):", repoSlug || "");
+        if (input && input.includes('/')) {
+          localStorage.setItem('nexora_github_repo', input.trim());
+          repoSlug = input.trim();
+          resolveLatestArtifactOrRelease();
+        }
+      }
+
+      resolveLatestArtifactOrRelease();
+    })();
+  </script>
 </body>
 </html>

@@ -50,3 +50,15 @@ data class ContactAliasEntity(
     val actualName: String,
     val phoneNumber: String
 )
+
+@Entity(tableName = "notes")
+data class NoteEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val title: String,
+    val content: String,
+    val category: String = "NOTE", // "NOTE" or "TODO"
+    val isCompleted: Boolean = false,
+    val colorHex: String = "#1E293B",
+    val timestamp: Long = System.currentTimeMillis()
+)

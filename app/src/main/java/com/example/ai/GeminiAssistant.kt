@@ -30,6 +30,16 @@ sealed class AssistantOutcome {
     data class ContactUpdateAction(val alias: String, val newNumber: String) : AssistantOutcome()
     data class RoutineAction(val routineName: String) : AssistantOutcome()
     data class TimeDateAction(val format: String = "NOW") : AssistantOutcome()
+    data class NoteAction(
+        val action: String, // "CREATE", "EDIT", "READ", "DELETE"
+        val title: String = "",
+        val content: String = "",
+        val targetQuery: String = ""
+    ) : AssistantOutcome()
+    data class TodoAction(
+        val action: String, // "ADD", "COMPLETE", "LIST", "DELETE"
+        val task: String = ""
+    ) : AssistantOutcome()
     data class Error(val message: String) : AssistantOutcome()
 }
 
@@ -375,6 +385,27 @@ class GeminiAssistant {
                                 AssistantOutcome.SpokenResponse("IoT mode abhi band hai. Routines execute karne ke liye Settings me 'Enable IoT Mode' on karein.")
                             }
                             "get_time_date" -> AssistantOutcome.TimeDateAction()
+                            "create_note" -> AssistantOutcome.NoteAction(
+                                action = "CREATE",
+                                title = args.optString("title", ""),
+                                content = args.optString("content", "")
+                            )
+                            "edit_note" -> AssistantOutcome.NoteAction(
+                                action = "EDIT",
+                                targetQuery = args.optString("target_query", ""),
+                                content = args.optString("new_content", "")
+                            )
+                            "read_notes" -> AssistantOutcome.NoteAction(
+                                action = "READ"
+                            )
+                            "add_todo" -> AssistantOutcome.TodoAction(
+                                action = "ADD",
+                                task = args.optString("task", "")
+                            )
+                            "complete_todo" -> AssistantOutcome.TodoAction(
+                                action = "COMPLETE",
+                                task = args.optString("task", "")
+                            )
                             else -> parseOfflineCommand(prompt, isIotModeEnabled)
                         }
                     } else if (part.has("text")) {
@@ -431,6 +462,52 @@ class GeminiAssistant {
         }
 
         return when {
+            // Inbuilt Notes & To-Dos: Voice Commands
+            // 1. Edit Note: "note edit karo [target] to [new content]" / "edit note [target] change to [new content]"
+            (cmd.contains("edit") || cmd.contains("update") || cmd.contains("badlo")) && (cmd.contains("note") || cmd.contains("not")) -> {
+                val (target, newContent) = extractNoteEditDetails(cmd)
+                AssistantOutcome.NoteAction(action = "EDIT", targetQuery = target, content = newContent)
+            }
+
+            // 2. Delete Note: "delete note [target]" / "note delete karo [target]"
+            (cmd.contains("delete") || cmd.contains("remove") || cmd.contains("hatao") || cmd.contains("mitao")) && (cmd.contains("note") || cmd.contains("notes")) -> {
+                val target = extractNoteTarget(cmd)
+                AssistantOutcome.NoteAction(action = "DELETE", targetQuery = target)
+            }
+
+            // 3. Read Notes: "mere notes padho" / "show my notes" / "notes dikhao"
+            (cmd.contains("note") || cmd.contains("notes")) && (cmd.contains("padho") || cmd.contains("read") || cmd.contains("dikhao") || cmd.contains("sunao") || cmd.contains("batao") || cmd.contains("show")) -> {
+                AssistantOutcome.NoteAction(action = "READ")
+            }
+
+            // 4. Save / Create Note: "note banao [content]" / "save note [content]" / "take note [content]"
+            cmd.contains("note banao") || cmd.contains("note likho") || cmd.contains("save note") ||
+                    cmd.contains("take note") || cmd.contains("write note") || cmd.contains("naya note") ||
+                    cmd.contains("create note") || cmd.contains("note down") || cmd.startsWith("note ") ||
+                    cmd.contains("note save") -> {
+                val (title, content) = extractNoteCreationDetails(cmd)
+                AssistantOutcome.NoteAction(action = "CREATE", title = title, content = content)
+            }
+
+            // 5. Complete To-Do: "complete todo [task]" / "todo complete karo [task]" / "mark todo [task] done"
+            (cmd.contains("complete") || cmd.contains("done") || cmd.contains("finish") || cmd.contains("khatam") || cmd.contains("ho gaya")) && (cmd.contains("todo") || cmd.contains("task") || cmd.contains("to do")) -> {
+                val task = extractTodoTask(cmd)
+                AssistantOutcome.TodoAction(action = "COMPLETE", task = task)
+            }
+
+            // 6. Show To-Do List: "show todos" / "tasks dikhao" / "todo list kya hai"
+            (cmd.contains("todo") || cmd.contains("task") || cmd.contains("to do")) && (cmd.contains("dikhao") || cmd.contains("list") || cmd.contains("show") || cmd.contains("kya hai") || cmd.contains("batao")) -> {
+                AssistantOutcome.TodoAction(action = "LIST")
+            }
+
+            // 7. Add To-Do: "add todo [task]" / "todo add karo [task]" / "remember to [task]"
+            cmd.contains("add todo") || cmd.contains("todo add") || cmd.contains("task add") ||
+                    cmd.contains("add task") || cmd.contains("remember to") || cmd.contains("to do add") ||
+                    cmd.contains("to do likho") || cmd.contains("todo banao") || cmd.contains("kaam add") -> {
+                val task = extractTodoTask(cmd)
+                AssistantOutcome.TodoAction(action = "ADD", task = task)
+            }
+
             // YouTube (Voice trigger: "open youtube", "youtube chalao", "search X on youtube")
             cmd.contains("youtube") -> {
                 val query = extractYouTubeQuery(cmd)
@@ -561,10 +638,128 @@ class GeminiAssistant {
                     if (isIotModeEnabled) {
                         "Aap mujhe phone call, WhatsApp, YouTube, alarm, weather ya light on/off ke commands de sakte hain."
                     } else {
-                        "Mai aapka voice assistant hu. Aap mujhe 'Open YouTube', 'Send WhatsApp message', 'Set alarm', 'Show weather', 'Open Calculator' ya call lagane ke commands de sakte hain."
+                        "Mai aapka voice assistant hu. Aap mujhe 'Note banao meeting kal hai', 'Add todo buy groceries', 'Open YouTube', 'Send WhatsApp message', 'Set alarm', 'Show weather' ya call lagane ke commands de sakte hain."
                     }
                 )
         }
+    }
+
+    private fun extractNoteEditDetails(text: String): Pair<String, String> {
+        val clean = text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .trim()
+
+        val regexWithTo = Regex("""(?:note\s+edit\s*karo|edit\s+note|update\s+note|note\s+update\s*karo|note\s+badlo)\s+([a-zA-Z0-9_\s]+?)\s+(?:to|change\s+to|kar\s+do|bana\s+do|ko|par)\s+(.+)""", RegexOption.IGNORE_CASE)
+        val match = regexWithTo.find(clean)
+        if (match != null) {
+            val target = match.groupValues[1].trim()
+            val newContent = match.groupValues[2].trim()
+            return Pair(target, newContent)
+        }
+
+        val parts = clean.split(Regex("""\bto\b|\bchange to\b|\bkar do\b""", RegexOption.IGNORE_CASE))
+        if (parts.size >= 2) {
+            val target = parts[0]
+                .replace("note edit karo", "")
+                .replace("edit note", "")
+                .replace("update note", "")
+                .replace("note", "")
+                .trim()
+            val newContent = parts.subList(1, parts.size).joinToString(" ").trim()
+            return Pair(target.ifEmpty { "Welcome" }, newContent)
+        }
+
+        val fallbackTarget = clean
+            .replace("note edit karo", "")
+            .replace("edit note", "")
+            .replace("update note", "")
+            .replace("note", "")
+            .trim()
+        return Pair(fallbackTarget.ifEmpty { "Welcome" }, clean)
+    }
+
+    private fun extractNoteTarget(text: String): String {
+        return text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .replace("delete note", "")
+            .replace("remove note", "")
+            .replace("note delete karo", "")
+            .replace("note hatao", "")
+            .replace("note", "")
+            .trim()
+            .ifEmpty { "Welcome" }
+    }
+
+    private fun extractNoteCreationDetails(text: String): Pair<String, String> {
+        val clean = text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .replace("save note", "")
+            .replace("note banao", "")
+            .replace("note likho", "")
+            .replace("take note", "")
+            .replace("write note", "")
+            .replace("naya note", "")
+            .replace("create note", "")
+            .replace("note down", "")
+            .replace("note save karo", "")
+            .replace("note save", "")
+            .replace("ek note", "")
+            .replace("note", "")
+            .trim()
+
+        val content = if (clean.isNotBlank()) clean else "New voice note from Nexora"
+        val words = content.split(" ")
+        val title = if (words.size > 4) {
+            words.take(4).joinToString(" ").replaceFirstChar { it.uppercase() }
+        } else {
+            content.replaceFirstChar { it.uppercase() }
+        }
+        return Pair(title, content)
+    }
+
+    private fun extractTodoTask(text: String): String {
+        val clean = text
+            .replace("hey seeru", "")
+            .replace("hey nexora", "")
+            .replace("nexora", "")
+            .replace("seeru", "")
+            .replace("hey", "")
+            .replace("add todo", "")
+            .replace("todo add karo", "")
+            .replace("todo add", "")
+            .replace("add task", "")
+            .replace("task add karo", "")
+            .replace("task add", "")
+            .replace("remember to", "")
+            .replace("to do likho", "")
+            .replace("to do add", "")
+            .replace("todo banao", "")
+            .replace("kaam add karo", "")
+            .replace("complete todo", "")
+            .replace("todo complete karo", "")
+            .replace("todo complete", "")
+            .replace("task complete karo", "")
+            .replace("task complete", "")
+            .replace("mark todo", "")
+            .replace("todo done", "")
+            .replace("done karo", "")
+            .replace("khatam karo", "")
+            .replace("todo", "")
+            .replace("task", "")
+            .trim()
+        return if (clean.isNotBlank()) clean else "Check pending items"
     }
 
     private fun extractYouTubeQuery(text: String): String {

@@ -156,6 +156,32 @@ fun SeeruMainContent(
     val conversations by dao.getRecentConversations().collectAsState(initial = emptyList())
     val routines by dao.getAllRoutines().collectAsState(initial = emptyList())
     val contactAliases by dao.getAllContactAliases().collectAsState(initial = emptyList())
+    val notes by dao.getAllNotes().collectAsState(initial = emptyList())
+    val pendingTodos = remember(notes) { notes.filter { it.category == "TODO" && !it.isCompleted } }
+    val recentNotes = remember(notes) { notes.filter { it.category == "NOTE" } }
+
+    val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager }
+    var isBatteryOptimizationIgnored by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                powerManager?.isIgnoringBatteryOptimizations(context.packageName) ?: false
+            } else true
+        )
+    }
+
+    fun requestBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = android.net.Uri.parse("package:${context.packageName}")
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                context.startActivity(intent)
+            }
+        }
+    }
 
     // Assistant UI state
     var orbState by remember { mutableStateOf(OrbState.IDLE) }
@@ -678,6 +704,186 @@ fun SeeruMainContent(
                     }
                 }
 
+                is AssistantOutcome.NoteAction -> {
+                    when (outcome.action) {
+                        "CREATE" -> {
+                            val title = outcome.title.ifBlank { outcome.content.take(24).replaceFirstChar { it.uppercase() } }
+                            val note = NoteEntity(
+                                title = title,
+                                content = outcome.content,
+                                category = "NOTE",
+                                colorHex = "#0E7490",
+                                isCompleted = false
+                            )
+                            coroutineScope.launch(Dispatchers.IO) {
+                                dao.insertNote(note)
+                            }
+                            val reply = "Note '$title' save kar liya gaya hai."
+                            lastSeeruResponse = reply
+                            speechManager.speak(reply)
+                            dao.insertConversation(
+                                ConversationEntity(
+                                    role = "ASSISTANT",
+                                    text = reply,
+                                    actionType = "Note Saved"
+                                )
+                            )
+                            Toast.makeText(context, "Note Saved!", Toast.LENGTH_SHORT).show()
+                            orbState = OrbState.SPEAKING
+                        }
+                        "EDIT" -> {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val existingNotes = dao.getAllNotesSnapshot()
+                                val targetNote = existingNotes.find {
+                                    it.title.contains(outcome.targetQuery, ignoreCase = true) ||
+                                            it.content.contains(outcome.targetQuery, ignoreCase = true)
+                                } ?: existingNotes.firstOrNull()
+
+                                withContext(Dispatchers.Main) {
+                                    if (targetNote != null) {
+                                        val updated = targetNote.copy(
+                                            content = outcome.content,
+                                            timestamp = System.currentTimeMillis()
+                                        )
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            dao.updateNote(updated)
+                                        }
+                                        val reply = "Note '${targetNote.title}' ko update kar diya gaya hai."
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                        dao.insertConversation(
+                                            ConversationEntity(
+                                                role = "ASSISTANT",
+                                                text = reply,
+                                                actionType = "Note Updated"
+                                            )
+                                        )
+                                        Toast.makeText(context, "Note Updated!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val reply = "Koi note '${outcome.targetQuery}' naam ka nahi mila."
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    }
+                                    orbState = OrbState.SPEAKING
+                                }
+                            }
+                        }
+                        "DELETE" -> {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val existingNotes = dao.getAllNotesSnapshot()
+                                val targetNote = existingNotes.find {
+                                    it.title.contains(outcome.targetQuery, ignoreCase = true)
+                                }
+                                withContext(Dispatchers.Main) {
+                                    if (targetNote != null) {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            dao.deleteNote(targetNote)
+                                        }
+                                        val reply = "Note '${targetNote.title}' delete kar diya gaya hai."
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    } else {
+                                        val reply = "Note delete karne ke liye target note nahi mila."
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    }
+                                    orbState = OrbState.SPEAKING
+                                }
+                            }
+                        }
+                        "READ" -> {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val existingNotes = dao.getAllNotesSnapshot()
+                                withContext(Dispatchers.Main) {
+                                    if (existingNotes.isEmpty()) {
+                                        val reply = "Aapke paas abhi koi notes nahi hain."
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    } else {
+                                        val noteSummaries = existingNotes.take(3).mapIndexed { idx, n -> "${idx + 1}: ${n.title}" }.joinToString(", ")
+                                        val reply = "Aapke paas ${existingNotes.size} notes hain: $noteSummaries"
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    }
+                                    orbState = OrbState.SPEAKING
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is AssistantOutcome.TodoAction -> {
+                    when (outcome.action) {
+                        "ADD" -> {
+                            val todo = NoteEntity(
+                                title = outcome.task.replaceFirstChar { it.uppercase() },
+                                content = outcome.task,
+                                category = "TODO",
+                                colorHex = "#6D28D9",
+                                isCompleted = false
+                            )
+                            coroutineScope.launch(Dispatchers.IO) {
+                                dao.insertNote(todo)
+                            }
+                            val reply = "Task '${todo.title}' add kar diya gaya hai."
+                            lastSeeruResponse = reply
+                            speechManager.speak(reply)
+                            dao.insertConversation(
+                                ConversationEntity(
+                                    role = "ASSISTANT",
+                                    text = reply,
+                                    actionType = "Task Added"
+                                )
+                            )
+                            Toast.makeText(context, "Task Added!", Toast.LENGTH_SHORT).show()
+                            orbState = OrbState.SPEAKING
+                        }
+                        "COMPLETE" -> {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val existingTodos = dao.getAllNotesSnapshot().filter { it.category == "TODO" }
+                                val target = existingTodos.find {
+                                    it.title.contains(outcome.task, ignoreCase = true) ||
+                                            it.content.contains(outcome.task, ignoreCase = true)
+                                } ?: existingTodos.firstOrNull { !it.isCompleted }
+
+                                withContext(Dispatchers.Main) {
+                                    if (target != null) {
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            dao.updateTodoStatus(target.id, true)
+                                        }
+                                        val reply = "Task '${target.title}' complete mark kar diya gaya hai."
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    } else {
+                                        val reply = "Koi pending task nahi mila."
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    }
+                                    orbState = OrbState.SPEAKING
+                                }
+                            }
+                        }
+                        "LIST" -> {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val pending = dao.getAllNotesSnapshot().filter { it.category == "TODO" && !it.isCompleted }
+                                withContext(Dispatchers.Main) {
+                                    if (pending.isEmpty()) {
+                                        val reply = "Aapke sabhi to-dos complete hain!"
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    } else {
+                                        val tasks = pending.take(3).joinToString(", ") { it.title }
+                                        val reply = "Aapke pending tasks hain: $tasks"
+                                        lastSeeruResponse = reply
+                                        speechManager.speak(reply)
+                                    }
+                                    orbState = OrbState.SPEAKING
+                                }
+                            }
+                        }
+                    }
+                }
+
                 is AssistantOutcome.TimeDateAction -> {
                     val now = java.text.SimpleDateFormat("hh:mm a, EEEE, d MMMM", java.util.Locale.getDefault()).format(java.util.Date())
                     val reply = "Abhi samay $now hai."
@@ -790,6 +996,19 @@ fun SeeruMainContent(
                     )
                 }
                 NavigationBarItem(
+                    selected = selectedTab == 5,
+                    onClick = { selectedTab = 5 },
+                    icon = { Icon(Icons.Default.Checklist, contentDescription = "Notes & Tasks") },
+                    label = { Text("Notes", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = CyanPrimary,
+                        selectedTextColor = CyanPrimary,
+                        indicatorColor = CyanPrimary.copy(alpha = 0.15f),
+                        unselectedIconColor = TextMuted,
+                        unselectedTextColor = TextMuted
+                    )
+                )
+                NavigationBarItem(
                     selected = selectedTab == 4,
                     onClick = { selectedTab = 4 },
                     icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
@@ -820,6 +1039,16 @@ fun SeeruMainContent(
                     lastSeeruResponse = lastSeeruResponse,
                     isHandsFreeActive = isHandsFreeActive,
                     isIotModeEnabled = isIotModeEnabled,
+                    pendingTodos = pendingTodos,
+                    recentNotes = recentNotes,
+                    onToggleTodo = { id, isDone ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            dao.updateTodoStatus(id, isDone)
+                        }
+                    },
+                    onOpenNotesTab = { selectedTab = 5 },
+                    isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
+                    onRequestBatteryOptimization = { requestBatteryOptimization() },
                     onMicClick = { onMicButtonClicked() },
                     onQuickActionClick = { cmd -> executeCommand(cmd) },
                     onOpenAiTools = { showAiToolsSheet = true },
@@ -958,6 +1187,30 @@ fun SeeruMainContent(
                         coroutineScope.launch {
                             dao.deleteContactByAliasName(alias.alias)
                             Toast.makeText(context, "Alias '${alias.alias}' deleted", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+
+                5 -> NotesAndTodosScreen(
+                    notes = notes,
+                    onAddNote = { note ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            dao.insertNote(note)
+                        }
+                    },
+                    onUpdateNote = { note ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            dao.updateNote(note)
+                        }
+                    },
+                    onDeleteNote = { note ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            dao.deleteNote(note)
+                        }
+                    },
+                    onToggleTodo = { id, isDone ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            dao.updateTodoStatus(id, isDone)
                         }
                     }
                 )

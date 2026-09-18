@@ -74,6 +74,7 @@ class SpeechManager(private val context: Context) {
 
         // Create or reset SpeechRecognizer on main thread
         try {
+            com.example.service.SeeruForegroundService.isForegroundAppListening = true
             speechRecognizer?.destroy()
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
                 setRecognitionListener(object : RecognitionListener {
@@ -93,17 +94,20 @@ class SpeechManager(private val context: Context) {
                     override fun onEndOfSpeech() {
                         _isListening.value = false
                         _audioRms.value = 0f
+                        com.example.service.SeeruForegroundService.isForegroundAppListening = false
                     }
 
                     override fun onError(error: Int) {
                         _isListening.value = false
                         _audioRms.value = 0f
+                        com.example.service.SeeruForegroundService.isForegroundAppListening = false
                         Log.w("SpeechManager", "Speech recognition error: $error")
                     }
 
                     override fun onResults(results: Bundle?) {
                         _isListening.value = false
                         _audioRms.value = 0f
+                        com.example.service.SeeruForegroundService.isForegroundAppListening = false
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         val spokenText = matches?.firstOrNull().orEmpty()
                         if (spokenText.isNotBlank()) {
@@ -138,6 +142,7 @@ class SpeechManager(private val context: Context) {
         } catch (e: Exception) {
             // Ignore
         }
+        com.example.service.SeeruForegroundService.isForegroundAppListening = false
         _isListening.value = false
         _audioRms.value = 0f
     }
@@ -156,6 +161,7 @@ class SpeechManager(private val context: Context) {
     }
 
     fun destroy() {
+        com.example.service.SeeruForegroundService.isForegroundAppListening = false
         try {
             speechRecognizer?.destroy()
             speechRecognizer = null

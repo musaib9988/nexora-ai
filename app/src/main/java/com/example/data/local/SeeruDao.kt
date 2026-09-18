@@ -92,4 +92,56 @@ interface SeeruDao {
 
     @Query("DELETE FROM contact_aliases WHERE LOWER(alias) = LOWER(:alias)")
     suspend fun deleteContactByAliasName(alias: String)
+
+    // --- Inbuilt Notes & To-Dos App ---
+    @Query("SELECT * FROM notes ORDER BY timestamp DESC")
+    fun getAllNotes(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes ORDER BY timestamp DESC")
+    suspend fun getAllNotesSnapshot(): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE category = 'TODO' ORDER BY isCompleted ASC, timestamp DESC")
+    fun getTodos(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE category = 'NOTE' ORDER BY timestamp DESC")
+    fun getRegularNotes(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE LOWER(title) LIKE '%' || LOWER(:query) || '%' OR LOWER(content) LIKE '%' || LOWER(:query) || '%' ORDER BY timestamp DESC")
+    suspend fun searchNotes(query: String): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE LOWER(title) LIKE '%' || LOWER(:query) || '%' LIMIT 1")
+    suspend fun findNoteByTitle(query: String): NoteEntity?
+
+    @Query("SELECT * FROM notes WHERE LOWER(content) LIKE '%' || LOWER(:query) || '%' LIMIT 1")
+    suspend fun findNoteByContent(query: String): NoteEntity?
+
+    @Query("SELECT * FROM notes ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecentNotesSnapshot(limit: Int = 5): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE category = 'TODO' AND isCompleted = 0 ORDER BY timestamp DESC")
+    suspend fun getPendingTodosSnapshot(): List<NoteEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNote(note: NoteEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotes(notes: List<NoteEntity>)
+
+    @Update
+    suspend fun updateNote(note: NoteEntity)
+
+    @Query("UPDATE notes SET content = :newContent, timestamp = :timestamp WHERE id = :id")
+    suspend fun updateNoteContent(id: Long, newContent: String, timestamp: Long = System.currentTimeMillis())
+
+    @Query("UPDATE notes SET isCompleted = :isCompleted WHERE id = :id")
+    suspend fun updateTodoStatus(id: Long, isCompleted: Boolean)
+
+    @Delete
+    suspend fun deleteNote(note: NoteEntity)
+
+    @Query("DELETE FROM notes WHERE id = :id")
+    suspend fun deleteNoteById(id: Long)
+
+    @Query("DELETE FROM notes WHERE LOWER(title) LIKE '%' || LOWER(:titleQuery) || '%'")
+    suspend fun deleteNoteByTitle(titleQuery: String): Int
 }

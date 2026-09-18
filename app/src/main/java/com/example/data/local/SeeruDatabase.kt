@@ -14,9 +14,10 @@ import kotlinx.coroutines.launch
         DeviceEntity::class,
         ConversationEntity::class,
         RoutineEntity::class,
-        ContactAliasEntity::class
+        ContactAliasEntity::class,
+        NoteEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SeeruDatabase : RoomDatabase() {
@@ -120,6 +121,36 @@ abstract class SeeruDatabase : RoomDatabase() {
                                     ContactAliasEntity("ammi", "Mother", "+919876543210"),
                                     ContactAliasEntity("abbu", "Father", "+919876543211"),
                                     ContactAliasEntity("bhai", "Brother", "+919876543212")
+                                )
+                            )
+                            dao.insertNotes(
+                                listOf(
+                                    NoteEntity(
+                                        title = "Welcome to Nexora Notes",
+                                        content = "You can save notes with voice: 'Note banao meeting kal 10 baje hai' or 'Save note buy groceries'. You can also edit notes: 'Note edit karo meeting to sham 4 baje'.",
+                                        category = "NOTE",
+                                        colorHex = "#1E293B"
+                                    ),
+                                    NoteEntity(
+                                        title = "Daily Focus",
+                                        content = "Check background assistant status and test voice commands.",
+                                        category = "NOTE",
+                                        colorHex = "#0F766E"
+                                    ),
+                                    NoteEntity(
+                                        title = "Test voice wake-up",
+                                        content = "Say 'Hey' or tap orb to speak hands-free",
+                                        category = "TODO",
+                                        isCompleted = false,
+                                        colorHex = "#0E7490"
+                                    ),
+                                    NoteEntity(
+                                        title = "Try Note editing",
+                                        content = "Say 'Note edit karo Welcome change to ...'",
+                                        category = "TODO",
+                                        isCompleted = false,
+                                        colorHex = "#7C3AED"
+                                    )
                                 )
                             )
                         }
