@@ -34,30 +34,8 @@ class PhoneActionHandler(private val context: Context) {
     }
 
     fun sendDirectSms(recipientPhoneOrName: String, body: String): Boolean {
-        val digits = recipientPhoneOrName.filter { it.isDigit() || it == '+' }
-        if (digits.isBlank() || body.isBlank()) {
-            return composeSms(recipientPhoneOrName, body)
-        }
-
-        // Try direct SmsManager if SEND_SMS permission is granted
-        return try {
-            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                context.getSystemService(SmsManager::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                SmsManager.getDefault()
-            }
-            val parts = smsManager.divideMessage(body)
-            if (parts.size > 1) {
-                smsManager.sendMultipartTextMessage(digits, null, parts, null, null)
-            } else {
-                smsManager.sendTextMessage(digits, null, body, null, null)
-            }
-            true
-        } catch (e: Exception) {
-            Log.w("PhoneActionHandler", "Direct SMS failed (${e.message}), falling back to SMS app")
-            composeSms(digits, body)
-        }
+        // Safe, permissionless SMS composition via system default SMS messenger
+        return composeSms(recipientPhoneOrName, body)
     }
 
     fun composeSms(recipientPhoneOrName: String, body: String): Boolean {

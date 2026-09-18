@@ -172,13 +172,15 @@ fun SeeruMainContent(
     fun requestBatteryOptimization() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
-                val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = android.net.Uri.parse("package:${context.packageName}")
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
                 val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                 context.startActivity(intent)
+            } catch (e: Exception) {
+                try {
+                    val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = android.net.Uri.parse("package:${context.packageName}")
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {}
             }
         }
     }
